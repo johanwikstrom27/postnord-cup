@@ -1,5 +1,8 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
+import { Suspense } from "react";
 import { supabaseServer } from "@/lib/supabase";
 import AdminSeasonBar from "@/components/AdminSeasonBar";
 
@@ -25,10 +28,14 @@ export default async function AdminLayout({
 
   return (
     <div className="space-y-6">
-      <AdminSeasonBar
-        seasons={seasons.map((s) => ({ id: s.id, name: s.name }))}
-        currentSeasonId={currentSeasonId}
-      />
+      {/* ✅ Viktigt: useSearchParams() i AdminSeasonBar kräver Suspense */}
+      <Suspense fallback={<div className="h-[84px] rounded-2xl border border-white/10 bg-white/5" />}>
+        <AdminSeasonBar
+          seasons={seasons.map((s) => ({ id: s.id, name: s.name }))}
+          currentSeasonId={currentSeasonId}
+        />
+      </Suspense>
+
       {children}
     </div>
   );

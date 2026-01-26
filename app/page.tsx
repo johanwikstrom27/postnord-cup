@@ -6,6 +6,13 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
 
 /* ===========================
+   Justera loggstorlek här
+   (endast dessa två rader)
+=========================== */
+const LOGO_MOBILE = 72;  // px
+const LOGO_DESKTOP = 92; // px
+
+/* ===========================
    Types
 =========================== */
 type SeasonRow = { id: string; name: string; created_at?: string };
@@ -105,7 +112,7 @@ function medalForPlacing(placing: number | null) {
   return "🏅";
 }
 
-function AvatarRound({ url, name, size = 40 }: { url: string | null; name: string; size?: number }) {
+function AvatarRound({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   return (
     <div
       className="overflow-hidden rounded-full border border-white/10 bg-white/5 shrink-0"
@@ -125,30 +132,11 @@ function Thumb({ url, alt }: { url: string | null; alt: string }) {
   return (
     <div className="h-16 w-16 overflow-hidden rounded-xl border border-white/10 bg-white/5 shrink-0">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={url ?? "/icons/pncuplogga.png"}
-        alt={alt}
-        className="h-full w-full object-cover"
-      />
+      <img src={url ?? "/icons/pncuplogga.png"} alt={alt} className="h-full w-full object-cover" />
     </div>
   );
 }
 
-function InfoRow({ children }: { children: React.ReactNode }) {
-  return <div className="mt-2 flex items-center gap-3 text-[11px] text-white/75">{children}</div>;
-}
-
-function InfoDot({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className="opacity-80">•</span> {children}
-    </span>
-  );
-}
-
-/* =========================================================
-   Symmetric fixed card (all three identical height)
-========================================================= */
 function MiniCard({
   href,
   kicker,
@@ -170,22 +158,21 @@ function MiniCard({
       className="group block rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
       title={title}
     >
-      {/* Fixed height prevents “snett” layout */}
       <div className="flex h-[120px] items-stretch gap-4 p-4">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] text-white/60">{kicker}</div>
-          <div className="mt-1 text-sm font-semibold truncate">{title}</div>
+          <div className="mt-1 text-sm font-semibold leading-snug overflow-hidden">
+            {title}
+          </div>
           {sub ? <div className="mt-1 text-[10px] text-white/60 truncate">{sub}</div> : null}
           {children ? <div className="mt-2">{children}</div> : null}
         </div>
-
         <div className="flex items-center">{thumb}</div>
       </div>
     </Link>
   );
 }
 
-/* Big next event card */
 function NextEventBig({ event, seasonQuery }: { event: EventRow | null; seasonQuery: string }) {
   if (!event) {
     return (
@@ -272,7 +259,6 @@ export default async function Page() {
     hcp: Number(p.hcp ?? 0),
     people: p.people ?? null,
   })) as SeasonPlayerRow[];
-
   const spIds = players.map((p) => p.id);
 
   // events
@@ -362,22 +348,39 @@ export default async function Page() {
     <main className="space-y-6">
       {/* HEADER */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-        {/* Title row */}
-        <div className="flex items-center gap-20">
-          <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
+        {/* Logo + Title */}
+        <div className="flex items-center gap-8">
+          {/* Logo no box */}
+          <div
+            className="shrink-0"
+            style={{ width: LOGO_MOBILE, height: LOGO_MOBILE }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/pncuplogga.png" alt="PostNord Cup" className="max-h-14 max-w-14 object-contain" />
+            <img
+  src="/icons/pncuplogga-v2.png"
+  alt="PostNord Cup"
+  className="
+    h-22 w-22
+    sm:h-16 sm:w-16
+    md:h-20 md:w-20
+    lg:h-24 lg:w-24
+    object-contain
+    shrink-0
+  "
+/>
           </div>
 
+          {/* Title (no ellipsis) */}
           <div className="min-w-0">
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight truncate">{season.name}</h1>
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight leading-tight break-words">
+              {season.name}
+            </h1>
             <p className="mt-2 text-sm sm:text-base text-white/60">Trackman @ Troxhammar GK</p>
           </div>
         </div>
 
         {/* Symmetric cards */}
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {/* Leader */}
           {leader ? (
             <MiniCard
               href={`/players/${leader.person_id}${seasonQuery}`}
@@ -392,7 +395,6 @@ export default async function Page() {
             </div>
           )}
 
-          {/* Final */}
           {finalEvent ? (
             <MiniCard
               href={`/events/${finalEvent.id}${seasonQuery}`}
@@ -407,7 +409,6 @@ export default async function Page() {
             </div>
           )}
 
-          {/* Next */}
           {nextEvent ? (
             <MiniCard
               href={`/events/${nextEvent.id}${seasonQuery}`}
@@ -416,11 +417,11 @@ export default async function Page() {
               sub={`${fmtDateShort(nextEvent.starts_at)} • ${typeLabel(nextEvent.event_type)}`}
               thumb={<Thumb url={nextEvent.image_url} alt={nextEvent.name} />}
             >
-              <InfoRow>
+              <div className="mt-2 flex items-center gap-3 text-[11px] text-white/75">
                 {nextEvent.setting_wind ? <span>🌬️ {nextEvent.setting_wind}</span> : null}
-                {nextEvent.setting_tee_meters ? <InfoDot>⛳ {nextEvent.setting_tee_meters}</InfoDot> : null}
-                {nextEvent.setting_pins ? <InfoDot>📍 {nextEvent.setting_pins}</InfoDot> : null}
-              </InfoRow>
+                {nextEvent.setting_tee_meters ? <span>⛳ {nextEvent.setting_tee_meters}</span> : null}
+                {nextEvent.setting_pins ? <span>📍 {nextEvent.setting_pins}</span> : null}
+              </div>
             </MiniCard>
           ) : (
             <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
@@ -510,7 +511,7 @@ export default async function Page() {
         </div>
       </section>
 
-      {/* NÄSTA TÄVLING (stort kort) */}
+      {/* NEXT EVENT BIG */}
       <section className="space-y-2">
         <div className="flex items-end justify-between">
           <h2 className="text-xl font-semibold">🗓️ Nästa tävling</h2>

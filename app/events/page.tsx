@@ -115,9 +115,9 @@ export default async function EventsPage({
 
   let events = (eventsResp.data as EventRow[] | null) ?? [];
 
-  // --- Hämta vinnare för låsta tävlingar (placering 1) i en batch ---
+  // --- Winners for locked events ---
   const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
-  const winnersByEvent = new Map<string, WinnerInfo>();
+  const winnersByEvent = new Map<string, WinnerInfo[]>();
 
   if (lockedIds.length) {
     const wResp = await sb
@@ -134,13 +134,18 @@ export default async function EventsPage({
       const name = sp?.people?.name ? String(sp.people.name) : null;
       const avatarUrl = sp?.people?.avatar_url ? String(sp.people.avatar_url) : null;
 
-      if (eventId && personId && name) {
-        winnersByEvent.set(eventId, { person_id: personId, name, avatar_url: avatarUrl });
+      if (!eventId || !personId || !name) continue;
+
+      const arr = winnersByEvent.get(eventId) ?? [];
+      // undvik dubletter
+      if (!arr.some((x) => x.person_id === personId)) {
+        arr.push({ person_id: personId, name, avatar_url: avatarUrl });
       }
+      winnersByEvent.set(eventId, arr);
     }
   }
 
-  // Filtrera efter tab
+  // Filter tabs
   if (filter === "upcoming") events = events.filter((e) => e.locked !== true);
   if (filter === "played") events = events.filter((e) => e.locked === true);
 
@@ -163,7 +168,7 @@ export default async function EventsPage({
         <div className="text-sm text-white/60">Tävlingar</div>
         <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
 
-        {/* Filter buttons */}
+        {/* Filters */}
         <div className="mt-5 flex flex-wrap gap-2">
           <Link href={allHref} className={tabClass(filter === "all")}>
             Alla
@@ -180,7 +185,11 @@ export default async function EventsPage({
       {/* Grid */}
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {events.map((e) => {
-          const winner = e.locked ? winnersByEvent.get(e.id) ?? null : null;
+          const winners = e.locked ? winnersByEvent.get(e.id) ?? [] : [];
+          const isTeam = e.event_type === "LAGTÄVLING";
+
+          // For non-team events: show only first winner
+          const winnersToShow: WinnerInfo[] = isTeam ? winners.slice(0, 2) : winners.slice(0, 1);
 
           return (
             <Link
@@ -189,9 +198,9 @@ export default async function EventsPage({
               className="group rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition overflow-hidden"
               title="Öppna tävling"
             >
-              {/* ✅ Symmetric card shell */}
+              {/* Symmetric card */}
               <div className="flex flex-col h-[420px]">
-                {/* ✅ Fixed image box */}
+                {/* Fixed image box */}
                 <div className="relative h-[220px] w-full overflow-hidden bg-black/20">
                   {e.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -220,12 +229,16 @@ export default async function EventsPage({
                     {fmtDateTime(e.starts_at)} • {e.course ?? "Bana ej angiven"}
                   </div>
 
-                  {/* Winner row (only if locked + winner exists) */}
-                  {winner && (
-                    <div className="mt-3 flex items-center gap-2 text-sm">
-                      <span className="text-base">🥇</span>
-                      <AvatarSmall url={winner.avatar_url} name={winner.name} />
-                      <span className="font-medium text-white/90 truncate">{winner.name}</span>
+                  {/* Winner row(s) */}
+                  {e.locked && winnersToShow.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {winnersToShow.map((w) => (
+                        <div key={w.person_id} className="flex items-center gap-2 text-sm">
+                          <span className="text-base">🥇</span>
+                          <AvatarSmall url={w.avatar_url} name={w.name} />
+                          <span className="font-medium text-white/90 truncate">{w.name}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 

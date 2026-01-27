@@ -357,7 +357,7 @@ export default async function Page() {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-  src="/icons/pncuplogga-v2.png"
+  src="/icons/pncuplogga-v4.png"
   alt="PostNord Cup"
   className="
     h-22 w-22

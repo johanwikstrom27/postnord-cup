@@ -22,6 +22,8 @@ type EventRow = {
   locked: boolean;
 };
 
+type WinnerInfo = { person_id: string; name: string; avatar_url: string | null };
+
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
   if (t === "MAJOR") return "Major";
@@ -76,6 +78,19 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
+function AvatarSmall({ url, name }: { url: string | null; name: string }) {
+  return (
+    <div className="h-6 w-6 overflow-hidden rounded-full border border-white/10 bg-white/5 shrink-0">
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[10px]">⛳</div>
+      )}
+    </div>
+  );
+}
+
 export default async function EventsPage({
   searchParams,
 }: {
@@ -92,12 +107,40 @@ export default async function EventsPage({
 
   const eventsResp = await sb
     .from("events")
-    .select("id,season_id,name,event_type,starts_at,course,description,image_url,setting_wind,setting_tee_meters,setting_pins,locked")
+    .select(
+      "id,season_id,name,event_type,starts_at,course,description,image_url,setting_wind,setting_tee_meters,setting_pins,locked"
+    )
     .eq("season_id", season.id)
     .order("starts_at", { ascending: true });
 
   let events = (eventsResp.data as EventRow[] | null) ?? [];
 
+  // --- Hämta vinnare för låsta tävlingar (placering 1) i en batch ---
+  const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
+  const winnersByEvent = new Map<string, WinnerInfo>();
+
+  if (lockedIds.length) {
+    const wResp = await sb
+      .from("results")
+      .select("event_id, season_players(person_id, people(name, avatar_url))")
+      .in("event_id", lockedIds)
+      .eq("placering", 1);
+
+    const rows = (wResp.data ?? []) as any[];
+    for (const r of rows) {
+      const eventId = String(r.event_id);
+      const sp = r.season_players;
+      const personId = sp?.person_id ? String(sp.person_id) : null;
+      const name = sp?.people?.name ? String(sp.people.name) : null;
+      const avatarUrl = sp?.people?.avatar_url ? String(sp.people.avatar_url) : null;
+
+      if (eventId && personId && name) {
+        winnersByEvent.set(eventId, { person_id: personId, name, avatar_url: avatarUrl });
+      }
+    }
+  }
+
+  // Filtrera efter tab
   if (filter === "upcoming") events = events.filter((e) => e.locked !== true);
   if (filter === "played") events = events.filter((e) => e.locked === true);
 
@@ -119,9 +162,8 @@ export default async function EventsPage({
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
         <div className="text-sm text-white/60">Tävlingar</div>
         <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
-        <div className="mt-2 text-white/60">Alla tävlingar för vald säsong.</div>
 
-        {/* Filters */}
+        {/* Filter buttons */}
         <div className="mt-5 flex flex-wrap gap-2">
           <Link href={allHref} className={tabClass(filter === "all")}>
             Alla
@@ -137,66 +179,70 @@ export default async function EventsPage({
 
       {/* Grid */}
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {events.map((e) => (
-          <Link
-            key={e.id}
-            href={`/events/${e.id}${seasonQuery}`}
-            className="group rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition overflow-hidden"
-            title="Öppna tävling"
-          >
-            {/* ✅ Symmetric card shell */}
-            <div className="flex flex-col h-[420px]">
-              {/* ✅ Fixed image box (same height, always) */}
-              <div className="relative h-[220px] w-full overflow-hidden bg-black/20">
-                {e.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={e.image_url}
-                    alt={e.course ?? e.name}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-white/40 text-sm">
-                    Ingen bild
+        {events.map((e) => {
+          const winner = e.locked ? winnersByEvent.get(e.id) ?? null : null;
+
+          return (
+            <Link
+              key={e.id}
+              href={`/events/${e.id}${seasonQuery}`}
+              className="group rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition overflow-hidden"
+              title="Öppna tävling"
+            >
+              {/* ✅ Symmetric card shell */}
+              <div className="flex flex-col h-[420px]">
+                {/* ✅ Fixed image box */}
+                <div className="relative h-[220px] w-full overflow-hidden bg-black/20">
+                  {e.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={e.image_url} alt={e.course ?? e.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-white/40 text-sm">Ingen bild</div>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+
+                  <div className="absolute left-3 top-3 flex items-center gap-2">
+                    <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white backdrop-blur">
+                      {typeLabel(e.event_type)}
+                    </span>
+                    <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white backdrop-blur">
+                      {e.locked ? "Spelad" : "Kommande"}
+                    </span>
                   </div>
-                )}
+                </div>
 
-                {/* overlay */}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+                {/* Content */}
+                <div className="flex-1 p-4 flex flex-col">
+                  <div className="text-xl font-semibold leading-tight line-clamp-1">{e.name}</div>
 
-                {/* badges */}
-                <div className="absolute left-3 top-3 flex items-center gap-2">
-                  <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white backdrop-blur">
-                    {typeLabel(e.event_type)}
-                  </span>
-                  <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white backdrop-blur">
-                    {e.locked ? "Spelad" : "Kommande"}
-                  </span>
+                  <div className="mt-2 text-sm text-white/65 leading-snug line-clamp-2">
+                    {fmtDateTime(e.starts_at)} • {e.course ?? "Bana ej angiven"}
+                  </div>
+
+                  {/* Winner row (only if locked + winner exists) */}
+                  {winner && (
+                    <div className="mt-3 flex items-center gap-2 text-sm">
+                      <span className="text-base">🥇</span>
+                      <AvatarSmall url={winner.avatar_url} name={winner.name} />
+                      <span className="font-medium text-white/90 truncate">{winner.name}</span>
+                    </div>
+                  )}
+
+                  {/* spacer */}
+                  <div className="flex-1" />
+
+                  {/* Settings */}
+                  <div className="pt-4 flex flex-wrap gap-2">
+                    <Pill>🌬️ {e.setting_wind ?? "—"}</Pill>
+                    <Pill>⛳ {e.setting_tee_meters ?? "—"}</Pill>
+                    <Pill>📍 {e.setting_pins ?? "—"}</Pill>
+                  </div>
                 </div>
               </div>
-
-              {/* ✅ Fixed content layout */}
-              <div className="flex-1 p-4 flex flex-col">
-                <div className="text-xl font-semibold leading-tight line-clamp-1">{e.name}</div>
-
-                {/* date + course (max 2 lines total) */}
-                <div className="mt-2 text-sm text-white/65 leading-snug line-clamp-2">
-                  {fmtDateTime(e.starts_at)} • {e.course ?? "Bana ej angiven"}
-                </div>
-
-                {/* spacer to force pills to bottom */}
-                <div className="flex-1" />
-
-                {/* Pills always present (placeholders keep symmetry) */}
-                <div className="pt-4 flex flex-wrap gap-2">
-                  <Pill>🌬️ {e.setting_wind ?? "—"}</Pill>
-                  <Pill>⛳ {e.setting_tee_meters ?? "—"}</Pill>
-                  <Pill>📍 {e.setting_pins ?? "—"}</Pill>
-                </div>
-              </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
 
         {!events.length && (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/60 md:col-span-2 lg:col-span-3">

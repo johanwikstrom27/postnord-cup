@@ -11,9 +11,9 @@ type RulesRow = {
   major_best_of: number | null;
   lagtavling_best_of: number | null;
 
-  // Dessa kan heta olika i din DB. Vi försöker läsa dem om de finns.
-  hcp0_max?: number | null; // t.ex. 10.5
-  hcp2_max?: number | null; // t.ex. 15.5
+  // kan finnas i din DB
+  hcp0_max?: number | null;
+  hcp2_max?: number | null;
 };
 
 type SPRow = {
@@ -29,12 +29,8 @@ type PointsRow = {
   points: number;
 };
 
-function typeLabel(t: string) {
-  if (t === "VANLIG") return "Vanlig";
-  if (t === "MAJOR") return "Major";
-  if (t === "LAGTÄVLING") return "Lagtävling";
-  if (t === "FINAL") return "Final";
-  return t;
+function fmtInt(n: number) {
+  return n.toLocaleString("sv-SE");
 }
 
 async function resolveSeason(sb: ReturnType<typeof supabaseServer>) {
@@ -73,7 +69,7 @@ const FINAL_START_BY_RANK: { rank: number; start: number }[] = [
   { rank: 8, start: -1 },
 ];
 
-function PointsFallback(eventType: string): { placing: number; points: number }[] {
+function pointsFallback(eventType: string): { placing: number; points: number }[] {
   if (eventType === "VANLIG") {
     return [
       { placing: 1, points: 2000 },
@@ -106,7 +102,7 @@ function PointsFallback(eventType: string): { placing: number; points: number }[
       { placing: 12, points: 520 },
     ];
   }
-  // Lagtävling (2v2) — endast topp 6 enligt er standard
+  // Lagtävling (2v2) – topp 6
   return [
     { placing: 1, points: 2000 },
     { placing: 2, points: 1200 },
@@ -115,10 +111,6 @@ function PointsFallback(eventType: string): { placing: number; points: number }[
     { placing: 5, points: 440 },
     { placing: 6, points: 400 },
   ];
-}
-
-function fmtInt(n: number) {
-  return n.toLocaleString("sv-SE");
 }
 
 export default async function StadgarPage() {
@@ -139,7 +131,6 @@ export default async function StadgarPage() {
   const majorBest = Number(rules?.major_best_of ?? 3);
   const lagBest = Number(rules?.lagtavling_best_of ?? 2);
 
-  // HCP-gränser (fallback om kolumner saknas i DB)
   const hcp0Max = Number(rules?.hcp0_max ?? 10.5);
   const hcp2Max = Number(rules?.hcp2_max ?? 15.5);
 
@@ -157,7 +148,7 @@ export default async function StadgarPage() {
     people: p.people ?? null,
   })) as SPRow[];
 
-  // Poängtabell (om den finns i DB). Annars fallback till standardtabellerna från bilden.
+  // Poängtabell (DB eller fallback)
   const ptResp = await sb
     .from("points_table")
     .select("event_type,placing,points")
@@ -173,7 +164,7 @@ export default async function StadgarPage() {
       .map((r) => ({ placing: Number(r.placing), points: Number(r.points) }))
       .sort((a, b) => a.placing - b.placing);
 
-    return fromDb.length ? fromDb : PointsFallback(eventType);
+    return fromDb.length ? fromDb : pointsFallback(eventType);
   };
 
   const regularPoints = pointsFor("VANLIG");
@@ -187,11 +178,11 @@ export default async function StadgarPage() {
         <div className="text-sm text-white/60">Stadgar</div>
         <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
         <div className="mt-2 text-white/60">
-          Sammanställning av regler, HCP-beräkning, final-startscore och poängfördelning.
+          Sammanställning av regler, HCP/PN-HCP, finalens startscore och poängfördelning.
         </div>
       </section>
 
-      {/* Infotext / Stadgar */}
+      {/* Stadgar */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="text-xl font-semibold">Stadgar</h2>
         <ul className="mt-3 space-y-2 text-white/80 list-disc pl-5">
@@ -200,7 +191,7 @@ export default async function StadgarPage() {
           <li>Av de vanliga tävlingarna räknas endast de bästa {vanligBest} av 6 möjliga.</li>
           <li>Av major-tävlingarna räknas endast de bästa {majorBest} av 4 möjliga.</li>
           <li>
-            Av lagtävlingarna (2v2) räknas de bästa {lagBest} av 2 möjliga. Lagen slumptas till dessa tävlingar.
+            Av lagtävlingarna (2v2) räknas de bästa {lagBest} av 2 möjliga. Lagen <b>slumpas</b> till dessa tävlingar.
           </li>
           <li>Vid delad förstaplats i någon tävling blir det särspel (puttävling, bäst av 3).</li>
           <li>Vid oavgjort på andra placeringar får båda spelarna den högre poängen.</li>
@@ -216,7 +207,7 @@ export default async function StadgarPage() {
         </ul>
       </section>
 
-      {/* Spelartabell med HCP + PN-HCP */}
+      {/* Spelare & PN-HCP */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="text-xl font-semibold">Spelare &amp; PN-HCP</h2>
         <div className="mt-2 text-white/60 text-sm">
@@ -259,11 +250,12 @@ export default async function StadgarPage() {
         </div>
       </section>
 
-      {/* Final startscore tabell */}
+      {/* Final startscore */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="text-xl font-semibold">Startscore inför Final</h2>
         <div className="mt-2 text-white/60 text-sm">
-          Startscore baseras på serieplacering + PN-HCP (slag). Exempel: serie-1:a startar på -10 och om PN-HCP är 2 slag ⇒ start -12.
+          <div>Startscore = Serieplacering inkl. PN-HCP (0/2/4 slag).</div>
+          <div>T.ex. 1:an startar på -10 och om PN-HCP är 2 slag = Startscore -12.</div>
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -283,7 +275,7 @@ export default async function StadgarPage() {
               ))}
               <tr>
                 <td className="px-3 py-2">#9–#12</td>
-                <td className="px-3 py-2 text-right tabular-nums">Even (0)</td>
+                <td className="px-3 py-2 text-right tabular-nums">0</td>
               </tr>
             </tbody>
           </table>
@@ -294,7 +286,9 @@ export default async function StadgarPage() {
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="text-xl font-semibold">Poängfördelning</h2>
         <div className="mt-2 text-white/60 text-sm">
-          Tabellen hämtas från säsongens poängtabell i databasen (eller fallback till standard).
+          I varje tävling koras en vinnare, direkt eller via särspel. T.ex. tre spelare delar bästa nettoscore,
+          särspel avgör plats nr 1 och övriga två spelare tilldelas poängen för plats nr 2. Fjärde bästa spelaren
+          tilldelas plats nr 4 och poäng därefter.
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-3">

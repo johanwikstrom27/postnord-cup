@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Season = { id: string; name: string };
@@ -9,6 +9,12 @@ type Season = { id: string; name: string };
 function buildHref(path: string, seasonId: string | null) {
   if (!seasonId) return path;
   return `${path}?season=${encodeURIComponent(seasonId)}`;
+}
+
+function seasonYear(name: string) {
+  // plockar första året i t.ex. "PostNord Cup 2026/2027"
+  const m = name.match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : 0;
 }
 
 export default function AdminSeasonBar({
@@ -21,6 +27,11 @@ export default function AdminSeasonBar({
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
+
+  // ✅ Sortera nyaste först (på året i namnet)
+  const seasonsSorted = useMemo(() => {
+    return [...seasons].sort((a, b) => seasonYear(b.name) - seasonYear(a.name));
+  }, [seasons]);
 
   const selected = sp.get("season") ?? currentSeasonId ?? "";
 
@@ -57,7 +68,7 @@ export default function AdminSeasonBar({
             onChange={(e) => onChangeSeason(e.target.value)}
             className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
           >
-            {seasons.map((s) => (
+            {seasonsSorted.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>

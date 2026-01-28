@@ -1,90 +1,94 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabase";
 
-function seasonNameFromStartYear(startYear: number) {
-  return `PostNord Cup ${startYear}/${startYear + 1}`;
+export const runtime = "nodejs";
+
+async function isAdmin() {
+  const cookieName = process.env.ADMIN_COOKIE_NAME || "pn_admin";
+  const c = await cookies();
+  const v = c.get(cookieName)?.value;
+  return v === "1";
 }
 
-export async function POST(req: NextRequest) {
-  const sb = supabaseServer();
-  const form = await req.formData();
-
-  const startYearRaw = String(form.get("start_year") ?? "").trim();
-  const startYear = Number(startYearRaw);
-  if (Number.isNaN(startYear) || startYear < 2000 || startYear > 2100) {
-    return NextResponse.redirect(new URL("/admin/seasons", req.url));
+export async function POST(req: Request) {
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const name = seasonNameFromStartYear(startYear);
+  const sb = supabaseServer();
+  const body = await req.json().catch(() => ({}));
+  const name = String(body?.name ?? "").trim();
+  const copyFromCurrent = Boolean(body?.copyFromCurrent ?? true);
 
-  const copy_from = String(form.get("copy_from") ?? "").trim() || null;
-  const copy_rules = form.get("copy_rules") === "on";
-  const copy_points = form.get("copy_points") === "on";
-  const copy_players = form.get("copy_players") === "on";
+  if (!name) {
+    return NextResponse.json({ error: "Missing name" }, { status: 400 });
+  }
 
-  // 1) skapa säsong
-  const insSeason = await sb.from("seasons").insert({ name }).select("id").single();
-  const newSeasonId = insSeason.data?.id as string | undefined;
+  // Skapa ny säsong som INAKTIV
+  const insSeason = await sb
+    .from("seasons")
+    .insert({ name, is_current: false })
+    .select("id")
+    .single();
 
-  if (!newSeasonId) return NextResponse.redirect(new URL("/admin/seasons", req.url));
+  if (insSeason.error) {
+    return NextResponse.json({ error: insSeason.error.message }, { status: 500 });
+  }
 
-  // 2) kopiera eller skapa default regler
-  if (copy_from) {
-    if (copy_rules) {
-      const rules = await sb
+  const newSeasonId = insSeason.data.id as string;
+
+  if (copyFromCurrent) {
+    // Hitta nuvarande säsong (fallback senaste)
+    const cur = await sb
+      .from("seasons")
+      .select("id")
+      .eq("is_current", true)
+      .limit(1)
+      .single();
+
+    let sourceSeasonId = (cur.data?.id as string | undefined) ?? null;
+
+    if (!sourceSeasonId) {
+      const latest = await sb
+        .from("seasons")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      sourceSeasonId = (latest.data?.id as string | undefined) ?? null;
+    }
+
+    if (sourceSeasonId) {
+      // Kopiera season_rules
+      const sr = await sb
         .from("season_rules")
         .select("*")
-        .eq("season_id", copy_from)
+        .eq("season_id", sourceSeasonId)
         .single();
 
-      if (rules.data) {
-        const { season_id, id, ...rest } = rules.data as any;
+      if (sr.data) {
+        const { season_id, id, created_at, ...rest } = sr.data as any;
         await sb.from("season_rules").insert({ season_id: newSeasonId, ...rest });
       }
-    } else {
-      await sb.from("season_rules").insert({
-        season_id: newSeasonId,
-        vanlig_best_of: 4,
-        major_best_of: 3,
-        lagtavling_best_of: 2,
-      });
-    }
 
-    if (copy_points) {
-      const pts = await sb.from("points_table").select("*").eq("season_id", copy_from);
-      const rows = (pts.data ?? []) as any[];
+      // Kopiera points_table
+      const pt = await sb
+        .from("points_table")
+        .select("*")
+        .eq("season_id", sourceSeasonId)
+        .order("event_type", { ascending: true })
+        .order("placing", { ascending: true });
 
-      if (rows.length) {
-        const newRows = rows.map((r) => {
-          const { season_id, id, ...rest } = r;
+      if (pt.data?.length) {
+        const rows = (pt.data as any[]).map((r) => {
+          const { season_id, id, created_at, ...rest } = r;
           return { season_id: newSeasonId, ...rest };
         });
-        await sb.from("points_table").insert(newRows);
+        await sb.from("points_table").insert(rows);
       }
     }
-
-    if (copy_players) {
-      const sps = await sb.from("season_players").select("person_id,hcp").eq("season_id", copy_from);
-      const rows = (sps.data ?? []) as any[];
-
-      if (rows.length) {
-        const newRows = rows.map((r) => ({
-          season_id: newSeasonId,
-          person_id: r.person_id,
-          hcp: r.hcp,
-        }));
-        await sb.from("season_players").insert(newRows);
-      }
-    }
-  } else {
-    // ingen mall => default rules
-    await sb.from("season_rules").insert({
-      season_id: newSeasonId,
-      vanlig_best_of: 4,
-      major_best_of: 3,
-      lagtavling_best_of: 2,
-    });
   }
 
-  return NextResponse.redirect(new URL(`/admin?season=${encodeURIComponent(newSeasonId)}`, req.url));
+  return NextResponse.json({ ok: true, season_id: newSeasonId });
 }

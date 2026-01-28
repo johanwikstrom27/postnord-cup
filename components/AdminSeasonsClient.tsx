@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 
 type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean };
 type Winner = { name: string; avatar_url: string | null; total: number } | null;
-type WinnerRow = { season_id: string; winner: Winner };
+type WinnerRow = { season_id: string; winner: Winner; label: string };
 
 function Avatar({ url, name }: { url: string | null; name: string }) {
   return (
@@ -35,9 +35,9 @@ export default function AdminSeasonsClient({
   seasons: SeasonRow[];
   winners: WinnerRow[];
 }) {
-  const winnerBySeason = useMemo(() => {
-    const m = new Map<string, Winner>();
-    for (const w of winners) m.set(w.season_id, w.winner);
+  const bySeason = useMemo(() => {
+    const m = new Map<string, { winner: Winner; label: string }>();
+    for (const w of winners) m.set(w.season_id, { winner: w.winner, label: w.label });
     return m;
   }, [winners]);
 
@@ -95,7 +95,9 @@ export default function AdminSeasonsClient({
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs text-white/60">Ny säsong</div>
-            <div className="text-sm text-white/70">Skapa en inaktiv säsong och fyll med spelare/tävlingar/regler.</div>
+            <div className="text-sm text-white/70">
+              Skapa en inaktiv säsong (t.ex. nästa år) och fyll den med spelare/tävlingar/regler.
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 md:items-end">
@@ -128,7 +130,8 @@ export default function AdminSeasonsClient({
       {/* Lista säsonger */}
       <section className="grid gap-4 md:grid-cols-2">
         {seasons.map((s) => {
-          const winner = winnerBySeason.get(s.id) ?? null;
+          const meta = bySeason.get(s.id) ?? { winner: null, label: s.is_current ? "Ledare (serie)" : "Vinnare (Final)" };
+          const winner = meta.winner;
 
           return (
             <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -141,9 +144,12 @@ export default function AdminSeasonsClient({
                   <div className="text-xl font-semibold">{s.name}</div>
 
                   <div className="mt-2 text-sm text-white/60">
-                    Vinnare: <span className="font-medium text-white/80">{winner?.name ?? "—"}</span>
+                    {meta.label}:{" "}
+                    <span className="font-medium text-white/80">{winner?.name ?? "—"}</span>
                   </div>
-                  <div className="text-xs text-white/50">{winner ? `${winner.total.toLocaleString("sv-SE")} p` : ""}</div>
+                  <div className="text-xs text-white/50">
+                    {winner ? `${winner.total.toLocaleString("sv-SE")} p` : ""}
+                  </div>
                 </div>
 
                 <Avatar url={winner?.avatar_url ?? null} name={winner?.name ?? "—"} />

@@ -157,6 +157,14 @@ export default async function AdminSeasonsPage() {
 
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];
 
+  // ✅ Sortera säsonger kronologiskt (nyaste först) baserat på namn, t.ex. "2026/2027"
+const seasonYear = (name: string) => {
+  const m = name.match(/(19|20)\d{2}/);
+  return m ? Number(m[0]) : 0;
+};
+
+seasons.sort((a, b) => seasonYear(b.name) - seasonYear(a.name));
+
   // Winner per season:
   // - current: serieledare
   // - inactive: finalvinnare (endast om final låst)

@@ -4,10 +4,8 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
+import AdminSeasonsClient from "@/components/AdminSeasonsClient";
 
-/* ===========================
-   Types
-=========================== */
 type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean };
 type RulesRow = { vanlig_best_of: number; major_best_of: number; lagtavling_best_of: number };
 
@@ -20,36 +18,12 @@ type SPRow = {
 type EventRow = { id: string; event_type: string; locked: boolean };
 type ResRow = { season_player_id: string; event_id: string; poang: number; did_not_play: boolean };
 
-/* ===========================
-   Helpers
-=========================== */
 function sumTopN(values: number[], n: number) {
   return values
     .slice()
     .sort((a, b) => b - a)
     .slice(0, n)
     .reduce((acc, v) => acc + v, 0);
-}
-
-function Avatar({ url, name }: { url: string | null; name: string }) {
-  return (
-    <div className="h-12 w-12 overflow-hidden rounded-full border border-white/10 bg-white/5">
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-lg">🏆</div>
-      )}
-    </div>
-  );
-}
-
-function CurrentChip() {
-  return (
-    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-      Aktiv
-    </span>
-  );
 }
 
 async function computeWinner(sb: ReturnType<typeof supabaseServer>, seasonId: string) {
@@ -126,126 +100,6 @@ async function computeWinner(sb: ReturnType<typeof supabaseServer>, seasonId: st
   return totals[0];
 }
 
-/* ===========================
-   Client actions (inline)
-   - Create season
-   - Set current
-=========================== */
-function AdminSeasonsActions() {
-  "use client";
-
-  const [name, setName] = (require("react") as typeof import("react")).useState("");
-  const [copy, setCopy] = (require("react") as typeof import("react")).useState(true);
-  const [busy, setBusy] = (require("react") as typeof import("react")).useState(false);
-  const [msg, setMsg] = (require("react") as typeof import("react")).useState<string | null>(null);
-
-  async function createSeason() {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/admin/seasons/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, copyFromCurrent: copy }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "Kunde inte skapa säsong");
-      setMsg("✅ Ny säsong skapad!");
-      setName("");
-      window.location.reload();
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setCurrent(season_id: string) {
-    if (!confirm("Sätta denna säsong som aktiv? Alla publika sidor kommer visa den.")) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/admin/seasons/set-current", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ season_id }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "Kunde inte sätta aktiv säsong");
-      setMsg("✅ Aktiv säsong uppdaterad!");
-      window.location.reload();
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="text-xs text-white/60">Ny säsong</div>
-          <div className="text-sm text-white/70">Skapa en inaktiv säsong (t.ex. nästa år) och fyll med data.</div>
-        </div>
-
-        <div className="flex flex-col gap-2 md:items-end">
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={name}
-              onChange={(e: any) => setName(e.target.value)}
-              placeholder="PostNord Cup 2026/2027"
-              className="w-[260px] max-w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
-            />
-            <button
-              disabled={busy || !name.trim()}
-              onClick={createSeason}
-              className="rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15 disabled:opacity-50"
-            >
-              {busy ? "Skapar..." : "Ny säsong"}
-            </button>
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-white/70">
-            <input type="checkbox" checked={copy} onChange={(e: any) => setCopy(e.target.checked)} />
-            Kopiera regler &amp; poängtabell från aktiv säsong
-          </label>
-        </div>
-      </div>
-
-      {msg ? <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm">{msg}</div> : null}
-
-      {/* Expose setter function via window so server page can call easily */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            window.__pn_set_current_season = async function(season_id) {
-              const btn = document.getElementById("pn-set-current-btn-"+season_id);
-              if (btn) btn.setAttribute("disabled","true");
-              try {
-                const res = await fetch("/api/admin/seasons/set-current", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ season_id })
-                });
-                const j = await res.json();
-                if (!res.ok) throw new Error(j?.error || "Kunde inte sätta aktiv säsong");
-                window.location.reload();
-              } catch(e) {
-                alert(e.message || "Fel");
-                if (btn) btn.removeAttribute("disabled");
-              }
-            };
-          `,
-        }}
-      />
-    </section>
-  );
-}
-
-/* ===========================
-   Page
-=========================== */
 export default async function AdminSeasonsPage() {
   const sb = supabaseServer();
 
@@ -255,6 +109,10 @@ export default async function AdminSeasonsPage() {
     .order("created_at", { ascending: false });
 
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];
+
+  const winners = await Promise.all(
+    seasons.map(async (s) => ({ season_id: s.id, winner: await computeWinner(sb, s.id) }))
+  );
 
   return (
     <main className="space-y-6">
@@ -269,65 +127,8 @@ export default async function AdminSeasonsPage() {
         </Link>
       </div>
 
-      {/* ✅ NEW: Create season UI */}
-      <AdminSeasonsActions />
-
-      <section className="grid gap-4 md:grid-cols-2">
-        {await Promise.all(
-          seasons.map(async (s) => {
-            const winner = await computeWinner(sb, s.id);
-
-            return (
-              <div key={s.id} className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-white/60">Säsong</div>
-                      {s.is_current ? <CurrentChip /> : null}
-                    </div>
-                    <div className="text-xl font-semibold">{s.name}</div>
-
-                    <div className="mt-2 text-sm text-white/60">
-                      Vinnare: <span className="font-medium text-white/80">{winner?.name ?? "—"}</span>
-                    </div>
-                    <div className="text-xs text-white/50">{winner ? `${winner.total.toLocaleString("sv-SE")} p` : ""}</div>
-                  </div>
-
-                  <Avatar url={winner?.avatar_url ?? null} name={winner?.name ?? "—"} />
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {/* ✅ FIX: set-current via API JSON */}
-                  <button
-                    id={`pn-set-current-btn-${s.id}`}
-                    onClick={() => (globalThis as any).__pn_set_current_season?.(s.id)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-50"
-                    disabled={s.is_current}
-                  >
-                    Sätt som aktiv
-                  </button>
-
-                  <Link
-                    href={`/admin?season=${encodeURIComponent(s.id)}`}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  >
-                    Öppna i admin →
-                  </Link>
-
-                  <Link
-                    href={`/?season=${encodeURIComponent(s.id)}`}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
-                  >
-                    Visa publikt →
-                  </Link>
-                </div>
-
-                <div className="mt-2 text-xs text-white/50">ID: {s.id}</div>
-              </div>
-            );
-          })
-        )}
-      </section>
+      {/* Client UI (Ny säsong + Sätt aktiv) */}
+      <AdminSeasonsClient seasons={seasons} winners={winners} />
     </main>
   );
 }

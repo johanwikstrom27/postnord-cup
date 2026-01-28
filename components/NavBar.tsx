@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/events", label: "Tävlingar" },
   { href: "/players", label: "Spelare" },
+  { href: "/stadgar", label: "Stadgar" },
   { href: "/history", label: "Historik" },
 ];
 

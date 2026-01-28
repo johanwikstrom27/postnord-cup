@@ -37,7 +37,7 @@ type ResultHistRow = {
   events: { name: string; event_type: string; starts_at: string; locked: boolean } | null;
 };
 
-/** NYTT: för troféskåp (vinster i alla säsonger) */
+// Troféskåp: vinster i alla säsonger
 type TrophyWinRow = {
   event_id: string;
   poang: number | null;
@@ -89,9 +89,23 @@ function typeLabel(t: string) {
   return t;
 }
 
+function iconForType(t: string) {
+  if (t === "FINAL") return "/icons/final-1.png";
+  if (t === "MAJOR") return "/icons/major-1.png";
+  if (t === "LAGTÄVLING") return "/icons/lagtavling-1.png";
+  return "/icons/vanlig-1.png";
+}
+
 function fmtShortDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleDateString("sv-SE", { month: "short", day: "numeric" });
+}
+
+// ✅ ENDA versionen av denna (inga dubletter)
+function fmtShortDateWithYear(iso: string) {
+  const d = new Date(iso);
+  // Ex: "18 jan. 2026"
+  return d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
 }
 
 function fmtInt(n: number) {
@@ -120,7 +134,7 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
 }
 
 /* ===========================
-   NYTT: Troféskåp UI helpers
+   Troféskåp UI
 =========================== */
 function TrophySlot({
   label,
@@ -143,19 +157,6 @@ function TrophySlot({
       <div className="mt-1 inline-flex items-center justify-center rounded-md border border-white/10 bg-black/25 px-2 py-0.5 text-xs font-semibold tabular-nums">
         {count}
       </div>
-    </div>
-  );
-}
-
-function AvatarSmall({ url, name }: { url: string | null; name: string }) {
-  return (
-    <div className="h-7 w-7 overflow-hidden rounded-full border border-white/10 bg-white/5 shrink-0">
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={name} className="h-full w-full object-cover" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-[10px]">⛳</div>
-      )}
     </div>
   );
 }
@@ -189,7 +190,7 @@ export default async function PlayerPage({
     (rulesResp.data as RulesRow | null) ??
     ({ vanlig_best_of: 4, major_best_of: 3, lagtavling_best_of: 2 } as RulesRow);
 
-  // personprofil (people) – här ligger bio/kuriosa/styrkor/svagheter
+  // personprofil
   const personResp = await sb
     .from("people")
     .select("id,name,avatar_url,bio,fun_facts,strengths,weaknesses")
@@ -269,7 +270,7 @@ export default async function PlayerPage({
     .slice(0, 3);
 
   /* ===========================
-     NYTT: Troféskåp-data (alla säsonger)
+     Troféskåp-data (alla säsonger)
   ============================ */
   const allSpResp = await sb.from("season_players").select("id").eq("person_id", personId);
   const allSeasonPlayerIds = (allSpResp.data ?? []).map((x: any) => String(x.id));
@@ -286,7 +287,7 @@ export default async function PlayerPage({
     winRows = (wResp.data ?? []) as any as TrophyWinRow[];
   }
 
-  const lockedWins = winRows.filter((w) => w.events?.locked === true);
+  const lockedWins = winRows.filter((w) => w.events?.locked === true && !!w.events?.starts_at);
 
   const winCount = {
     FINAL: lockedWins.filter((w) => w.events?.event_type === "FINAL").length,
@@ -297,7 +298,7 @@ export default async function PlayerPage({
 
   const last3Wins = lockedWins
     .slice()
-    .sort((a, b) => new Date(b.events?.starts_at ?? 0).getTime() - new Date(a.events?.starts_at ?? 0).getTime())
+    .sort((a, b) => new Date(b.events!.starts_at).getTime() - new Date(a.events!.starts_at).getTime())
     .slice(0, 3);
 
   return (
@@ -410,7 +411,7 @@ export default async function PlayerPage({
                     <div>
                       <div className="font-medium">{r.events!.name}</div>
                       <div className="text-xs text-white/60">
-                        {typeLabel(et)} • {fmtShortDate(r.events!.starts_at)}
+                        {typeLabel(et)} • {fmtShortDateWithYear(r.events!.starts_at)}
                       </div>
                     </div>
 
@@ -430,7 +431,7 @@ export default async function PlayerPage({
         </div>
       </section>
 
-      {/* Profilinfo */}
+      {/* ✅ Profilinfo från admin */}
       {(person.bio || person.fun_facts || person.strengths || person.weaknesses) && (
         <section className="grid gap-4 md:grid-cols-2">
           {(person.bio || person.fun_facts) && (
@@ -463,9 +464,7 @@ export default async function PlayerPage({
         </section>
       )}
 
-      {/* ===========================
-          NYTT: Troféskåp (läggs längst ner)
-         =========================== */}
+      {/* ✅ Troféskåp längst ner */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Troféskåp</h2>
@@ -474,10 +473,10 @@ export default async function PlayerPage({
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
           <div className="grid grid-cols-4 gap-4 items-end">
-            <TrophySlot label="Final" count={winCount.FINAL} iconSrc="/icons/final.png" big />
-            <TrophySlot label="Major" count={winCount.MAJOR} iconSrc="/icons/major.png" />
-            <TrophySlot label="Lagtävling" count={winCount.LAGTÄVLING} iconSrc="/icons/lagtavling.png" />
-            <TrophySlot label="Vanlig" count={winCount.VANLIG} iconSrc="/icons/vanlig.png" />
+            <TrophySlot label="Final" count={winCount.FINAL} iconSrc="/icons/final-1.png" big />
+            <TrophySlot label="Major" count={winCount.MAJOR} iconSrc="/icons/major-1.png" />
+            <TrophySlot label="Lagtävling" count={winCount.LAGTÄVLING} iconSrc="/icons/lagtavling-1.png" />
+            <TrophySlot label="Vanlig" count={winCount.VANLIG} iconSrc="/icons/vanlig-1.png" />
           </div>
 
           <div className="mt-4 h-[2px] w-full rounded-full bg-gradient-to-r from-white/10 via-white/20 to-white/10" />
@@ -490,6 +489,8 @@ export default async function PlayerPage({
                 last3Wins.map((w, idx) => {
                   const ev = w.events!;
                   const href = `/events/${ev.id}?season=${encodeURIComponent(ev.season_id)}`;
+                  const icon = iconForType(ev.event_type);
+
                   return (
                     <Link
                       key={`${ev.id}-${idx}`}
@@ -498,12 +499,14 @@ export default async function PlayerPage({
                       title="Öppna tävling"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-lg">🏆</span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={icon} alt={typeLabel(ev.event_type)} className="h-6 w-6 object-contain shrink-0" />
+
                         <div className="min-w-0">
                           <div className="font-medium truncate">
                             {typeLabel(ev.event_type)} — {ev.name}
                           </div>
-                          <div className="text-xs text-white/60">{fmtShortDate(ev.starts_at)}</div>
+                          <div className="text-xs text-white/60">{fmtShortDateWithYear(ev.starts_at)}</div>
                         </div>
                       </div>
 

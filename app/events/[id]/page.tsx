@@ -197,6 +197,7 @@ async function computePrelimFinalStartlist(
     };
   });
 
+  // sort on start incl hcp (lägst först)
   rows.sort((a, b) => a.start_incl_hcp - b.start_incl_hcp);
 
   return rows.map((r, idx) => ({
@@ -315,7 +316,7 @@ export default async function EventDetailPage({
   // Prelim final
   const prelim = isFinal && !event.locked ? await computePrelimFinalStartlist(sb, event.season_id, rules) : [];
 
-  // Individual results sorted (final sort on adjusted_score)
+  // Individual results sorted
   let individualSorted = results.filter((r) => !r.did_not_play).slice();
 
   if (isFinal) {
@@ -323,7 +324,6 @@ export default async function EventDetailPage({
       const da = Number(a.adjusted_score ?? 999999);
       const db = Number(b.adjusted_score ?? 999999);
       if (da !== db) return da - db;
-      // secondary sort: stable on name
       const na = a.season_players?.people?.name ?? "";
       const nb = b.season_players?.people?.name ?? "";
       return na.localeCompare(nb);
@@ -334,7 +334,7 @@ export default async function EventDetailPage({
 
   const sharedPlacingMap = isFinal ? computeSharedPlacings(individualSorted) : new Map<string, number>();
 
-  // Team grouping
+  // Team grouping (unchanged)
   const teams = new Map<
     number,
     {
@@ -414,11 +414,13 @@ export default async function EventDetailPage({
         </div>
       </section>
 
-      {/* FINAL: prelim */}
+      {/* FINAL: prelim (NOT LOCKED) -> #, Spelare, Total, Startscore */}
       {isFinal && !event.locked && (
         <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <h2 className="font-semibold">Preliminär startlista</h2>
-          <p className="mt-2 text-sm text-white/60">Sorterad på <b>Start inkl HCP</b> (lägst först).</p>
+          <p className="mt-2 text-sm text-white/60">
+            Sorterad på <b>Startscore</b> (lägst först).
+          </p>
 
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -427,10 +429,7 @@ export default async function EventDetailPage({
                   <th className="px-3 py-2 text-left">#</th>
                   <th className="px-3 py-2 text-left">Spelare</th>
                   <th className="px-3 py-2 text-right">Total</th>
-                  <th className="px-3 py-2 text-right">HCP</th>
-                  <th className="px-3 py-2 text-right">HCP slag</th>
-                  <th className="px-3 py-2 text-right">Start</th>
-                  <th className="px-3 py-2 text-right">Start inkl HCP</th>
+                  <th className="px-3 py-2 text-right">Startscore</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -443,16 +442,13 @@ export default async function EventDetailPage({
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-right">{r.total.toLocaleString("sv-SE")}</td>
-                    <td className="px-3 py-2 text-right">{r.hcp.toFixed(1)}</td>
-                    <td className="px-3 py-2 text-right">{r.hcp_strokes}</td>
-                    <td className="px-3 py-2 text-right">{r.start_base}</td>
                     <td className="px-3 py-2 text-right font-semibold">{r.start_incl_hcp}</td>
                   </tr>
                 ))}
 
                 {prelim.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-3 py-4 text-white/60">
+                    <td colSpan={4} className="px-3 py-4 text-white/60">
                       Inga låsta tävlingar att basera startlistan på ännu.
                     </td>
                   </tr>
@@ -463,7 +459,7 @@ export default async function EventDetailPage({
         </section>
       )}
 
-      {/* FINAL: locked results with shared placings */}
+      {/* FINAL: locked -> #, Spelare, Netto, Start, Brutto */}
       {isFinal && event.locked && (
         <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <h2 className="font-semibold">Finalresultat</h2>
@@ -472,12 +468,11 @@ export default async function EventDetailPage({
             <table className="min-w-full text-sm">
               <thead className="text-white/60">
                 <tr className="border-b border-white/10">
-                  <th className="px-3 py-2 text-left">Pl</th>
+                  <th className="px-3 py-2 text-left">#</th>
                   <th className="px-3 py-2 text-left">Spelare</th>
-                  <th className="px-3 py-2 text-right">Brutto</th>
-                  <th className="px-3 py-2 text-right">HCP slag</th>
+                  <th className="px-3 py-2 text-right">Netto</th>
                   <th className="px-3 py-2 text-right">Start</th>
-                  <th className="px-3 py-2 text-right">Nettoresultat</th>
+                  <th className="px-3 py-2 text-right">Brutto</th>
                 </tr>
               </thead>
 
@@ -487,6 +482,7 @@ export default async function EventDetailPage({
                   const personId = r.season_players?.person_id ?? "";
                   const start = startScoreMap.get(r.season_player_id) ?? 0;
                   const pl = sharedPlacingMap.get(r.season_player_id) ?? r.placering ?? "—";
+                  const netto = r.adjusted_score ?? null;
 
                   return (
                     <tr key={r.season_player_id}>
@@ -500,10 +496,9 @@ export default async function EventDetailPage({
                           name
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right">{r.gross_strokes ?? "—"}</td>
-                      <td className="px-3 py-2 text-right">{r.hcp_strokes ?? 0}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{netto ?? "—"}</td>
                       <td className="px-3 py-2 text-right">{start}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{r.adjusted_score ?? "—"}</td>
+                      <td className="px-3 py-2 text-right">{r.gross_strokes ?? "—"}</td>
                     </tr>
                   );
                 })}
@@ -531,6 +526,7 @@ export default async function EventDetailPage({
           {!event.locked ? (
             <p className="mt-2 text-white/70">Resultat visas här när tävlingen är spelad och låst.</p>
           ) : isTeam ? (
+            // Team block unchanged
             <div className="mt-3 space-y-3">
               {teamSorted.map((t) => (
                 <div key={t.lag_nr} className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -556,14 +552,13 @@ export default async function EventDetailPage({
               ))}
             </div>
           ) : (
+            // ✅ Regular/Major table UPDATED -> #, Spelare, Netto, Poäng
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-white/60">
                   <tr className="border-b border-white/10">
-                    <th className="px-3 py-2 text-left">Pl</th>
+                    <th className="px-3 py-2 text-left">#</th>
                     <th className="px-3 py-2 text-left">Spelare</th>
-                    <th className="px-3 py-2 text-right">Brutto</th>
-                    <th className="px-3 py-2 text-right">HCP slag</th>
                     <th className="px-3 py-2 text-right">Netto</th>
                     <th className="px-3 py-2 text-right">Poäng</th>
                   </tr>
@@ -584,8 +579,6 @@ export default async function EventDetailPage({
                             name
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right">{r.gross_strokes ?? "—"}</td>
-                        <td className="px-3 py-2 text-right">{r.hcp_strokes ?? 0}</td>
                         <td className="px-3 py-2 text-right">{r.net_strokes ?? "—"}</td>
                         <td className="px-3 py-2 text-right font-semibold">{(r.poang ?? 0).toLocaleString("sv-SE")}</td>
                       </tr>

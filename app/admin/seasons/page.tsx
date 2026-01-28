@@ -179,7 +179,7 @@ export default async function AdminSeasonsPage() {
           <div className="text-sm text-white/60">Admin</div>
           <h1 className="text-2xl font-semibold">Säsonger</h1>
           <div className="text-sm text-white/60">
-            Skapa nästa säsong som inaktiv och byt aktiv när det är dags.
+            Skapa ny säsong som inaktiv och byt sedan till aktiv.
           </div>
         </div>
         <Link href="/admin" className="text-sm text-white/70 hover:underline">

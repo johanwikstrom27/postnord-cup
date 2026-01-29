@@ -194,7 +194,7 @@ export default async function OverviewPage({
                 className={[
                   "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition overflow-hidden",
                   "pl-16 pr-5 py-4",
-                  "h-[180px] sm:h-[168px]", // lite högre
+                  "h-[180px] sm:h-[168px]",
                   isPlayed ? "opacity-90" : "",
                   isNext
                     ? "ring-1 ring-blue-400/55 shadow-[0_0_46px_rgba(80,140,255,0.55)] bg-white/8"
@@ -233,26 +233,30 @@ export default async function OverviewPage({
                   ) : null}
                 </div>
 
-                {/* trophy icon – fixed size for ALL, moved slightly down */}
-                <div className="absolute left-3 top-[60%] -translate-y-1/2">
-                  <div className="h-16 w-16">
+                {/* trophy icon – BIGGER + perfectly centered between left edge and text */}
+                <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                  <div className="h-20 w-20">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={icon}
                       alt={typeLabel(e.event_type)}
                       className={[
-                        "h-full w-full object-contain drop-shadow",
+                        "h-full w-full object-contain",
                         "transition-transform duration-150",
                         "group-hover:scale-[1.06]",
                         isNext ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
                       ].join(" ")}
-                      style={isNext ? { filter: "drop-shadow(0 0 18px rgba(120,190,255,0.70))" } : undefined}
+                      style={
+                        isNext
+                          ? { filter: "drop-shadow(0 0 20px rgba(120,190,255,0.80))" }
+                          : { filter: "drop-shadow(0 0 10px rgba(0,0,0,0.55))" }
+                      }
                     />
                   </div>
                 </div>
 
                 {/* content – pushed further right so trophy never overlaps */}
-                <div className="relative flex flex-col gap-2 pl-10">
+                <div className="relative flex flex-col gap-2 pl-14">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">

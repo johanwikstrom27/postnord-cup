@@ -58,6 +58,7 @@ function AvatarTiny({ url, name }: { url: string | null; name: string }) {
   );
 }
 
+// Progress ring (SVG) – text centrerad mot ringen
 function ProgressRing({ done, total }: { done: number; total: number }) {
   const r = 16;
   const c = 2 * Math.PI * r;
@@ -82,10 +83,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
       </svg>
 
       <div className="leading-tight">
-        <div className="text-xs text-white/60">Säsong progress</div>
-        <div className="text-sm font-semibold">
-          Spelade {done}/{total}
-        </div>
+        <div className="text-sm font-semibold">Spelade {done}/{total}</div>
       </div>
     </div>
   );
@@ -139,11 +137,8 @@ export default async function OverviewPage({
   const doneCount = events.filter((e) => e.locked).length;
   const nextUp = events.find((e) => !e.locked) ?? null;
 
-  // Winners for locked events:
-  // - normal/major/final: first row
-  // - team: allow 2 rows placering=1
+  // Winners (placering 1). Team can have 2 rows.
   const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
-
   const winnersByEvent = new Map<string, Array<{ person_id: string; name: string; avatar_url: string | null }>>();
 
   if (lockedIds.length) {
@@ -154,7 +149,6 @@ export default async function OverviewPage({
       .eq("placering", 1);
 
     const rows = (wResp.data ?? []) as WinnerRowAny[];
-
     for (const r of rows) {
       const eventId = String(r.event_id);
       const spx = r.season_players;
@@ -176,7 +170,7 @@ export default async function OverviewPage({
           <div>
             <div className="text-sm text-white/60">Säsongsöverblick</div>
             <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
-            <div className="mt-2 text-white/60">Scrolla tidslinjen för hela säsongen.</div>
+            <div className="mt-2 text-white/60">Tidslinje för säsongen.</div>
           </div>
 
           <ProgressRing done={doneCount} total={totalCount} />
@@ -184,7 +178,6 @@ export default async function OverviewPage({
       </section>
 
       <section className="relative">
-        {/* vertical line */}
         <div className="absolute left-6 top-0 bottom-0 w-[2px] bg-white/10 rounded-full" />
 
         <div className="space-y-5">
@@ -195,9 +188,7 @@ export default async function OverviewPage({
             const icon = iconForType(e.event_type);
             const winners = isPlayed ? winnersByEvent.get(e.id) ?? [] : [];
 
-            // show 2 winners only for team, else show first winner
-            const winnersToShow =
-              e.event_type === "LAGTÄVLING" ? winners.slice(0, 2) : winners.slice(0, 1);
+            const winnersToShow = e.event_type === "LAGTÄVLING" ? winners.slice(0, 2) : winners.slice(0, 1);
 
             return (
               <Link
@@ -206,10 +197,10 @@ export default async function OverviewPage({
                 className={[
                   "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition overflow-hidden",
                   "pl-16 pr-5 py-4",
-                  "h-[150px] sm:h-[140px]", // ✅ locked height for symmetry
+                  "h-[172px] sm:h-[160px]", // ✅ lite högre än innan
                   isPlayed ? "opacity-90" : "",
                   isNext
-                    ? "ring-1 ring-blue-400/45 shadow-[0_0_34px_rgba(80,140,255,0.35)] bg-white/7"
+                    ? "ring-1 ring-blue-400/45 shadow-[0_0_40px_rgba(80,140,255,0.42)] bg-white/7"
                     : "hover:bg-white/10",
                 ].join(" ")}
                 title="Öppna tävling"
@@ -227,7 +218,7 @@ export default async function OverviewPage({
                   </>
                 ) : null}
 
-                {/* node */}
+                {/* node with check in circle */}
                 <div className="absolute left-[18px] top-6">
                   <div
                     className={[
@@ -237,7 +228,6 @@ export default async function OverviewPage({
                     ].join(" ")}
                     title={isPlayed ? "Spelad" : "Kommande"}
                   >
-                    {/* ✅ green check inside circle (no extra badge) */}
                     {isPlayed ? <span className="text-[10px] leading-none text-emerald-200">✓</span> : null}
                   </div>
 
@@ -246,9 +236,9 @@ export default async function OverviewPage({
                   ) : null}
                 </div>
 
-                {/* big icon */}
-                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  <div className={isNext ? "h-16 w-16" : "h-14 w-14"}>
+                {/* big icon (bigger + lower) */}
+                <div className="absolute left-3 top-[56%] -translate-y-1/2">
+                  <div className={isNext ? "h-18 w-18" : "h-16 w-16"}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={icon}
@@ -259,17 +249,13 @@ export default async function OverviewPage({
                         isNext ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
                         "group-hover:scale-[1.06]",
                       ].join(" ")}
-                      style={
-                        isNext
-                          ? { filter: "drop-shadow(0 0 16px rgba(120,190,255,0.60))" }
-                          : undefined
-                      }
+                      style={isNext ? { filter: "drop-shadow(0 0 18px rgba(120,190,255,0.65))" } : undefined}
                     />
                   </div>
                 </div>
 
                 {/* content */}
-                <div className="relative flex flex-col gap-1">
+                <div className="relative flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -282,7 +268,6 @@ export default async function OverviewPage({
                         ) : null}
                       </div>
 
-                      {/* course full (no truncation) */}
                       <div className="mt-1 font-semibold text-lg leading-snug break-words">
                         {e.course ?? "Bana ej angiven"}
                       </div>
@@ -292,7 +277,6 @@ export default async function OverviewPage({
                       </div>
                     </div>
 
-                    {/* if not played show "Kommande" on right */}
                     {!isPlayed ? (
                       <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white/85 backdrop-blur shrink-0">
                         Kommande
@@ -302,9 +286,9 @@ export default async function OverviewPage({
                     )}
                   </div>
 
-                  {/* winners (locked) */}
+                  {/* winners (locked) – extra spacing so it feels airy */}
                   {isPlayed && winnersToShow.length ? (
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-2">
                       {winnersToShow.map((w) => (
                         <div key={w.person_id} className="flex items-center gap-2">
                           <span className="text-base">🥇</span>

@@ -15,16 +15,10 @@ type EventRow = {
   starts_at: string;
   course: string | null;
   image_url: string | null;
-  setting_wind: string | null;
-  setting_tee_meters: number | null;
-  setting_pins: string | null;
   locked: boolean;
 };
 
-type WinnerRow = {
-  event_id: string;
-  season_players: { person_id: string; people: { name: string; avatar_url: string | null } | null } | null;
-};
+type WinnerRowAny = any;
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -49,14 +43,6 @@ function fmtDateWithYear(iso: string) {
 function fmtTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/75">
-      {children}
-    </span>
-  );
 }
 
 function AvatarTiny({ url, name }: { url: string | null; name: string }) {
@@ -143,7 +129,7 @@ export default async function OverviewPage({
 
   const eventsResp = await sb
     .from("events")
-    .select("id,season_id,name,event_type,starts_at,course,image_url,setting_wind,setting_tee_meters,setting_pins,locked")
+    .select("id,season_id,name,event_type,starts_at,course,image_url,locked")
     .eq("season_id", season.id)
     .order("starts_at", { ascending: true });
 
@@ -153,9 +139,12 @@ export default async function OverviewPage({
   const doneCount = events.filter((e) => e.locked).length;
   const nextUp = events.find((e) => !e.locked) ?? null;
 
-  // winners for locked events (placering 1)
+  // Winners for locked events:
+  // - normal/major/final: first row
+  // - team: allow 2 rows placering=1
   const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
-  const winnerByEvent = new Map<string, { person_id: string; name: string; avatar_url: string | null }>();
+
+  const winnersByEvent = new Map<string, Array<{ person_id: string; name: string; avatar_url: string | null }>>();
 
   if (lockedIds.length) {
     const wResp = await sb
@@ -164,16 +153,19 @@ export default async function OverviewPage({
       .in("event_id", lockedIds)
       .eq("placering", 1);
 
-    const rows = (wResp.data ?? []) as any as WinnerRow[];
-    for (const r of rows as any[]) {
+    const rows = (wResp.data ?? []) as WinnerRowAny[];
+
+    for (const r of rows) {
       const eventId = String(r.event_id);
       const spx = r.season_players;
       const person_id = spx?.person_id ? String(spx.person_id) : "";
       const name = spx?.people?.name ? String(spx.people.name) : "";
       const avatar_url = (spx?.people?.avatar_url as string | null) ?? null;
-      if (eventId && person_id && name && !winnerByEvent.has(eventId)) {
-        winnerByEvent.set(eventId, { person_id, name, avatar_url });
-      }
+      if (!eventId || !person_id || !name) continue;
+
+      const arr = winnersByEvent.get(eventId) ?? [];
+      if (!arr.some((x) => x.person_id === person_id)) arr.push({ person_id, name, avatar_url });
+      winnersByEvent.set(eventId, arr);
     }
   }
 
@@ -191,8 +183,8 @@ export default async function OverviewPage({
         </div>
       </section>
 
-      {/* Timeline */}
       <section className="relative">
+        {/* vertical line */}
         <div className="absolute left-6 top-0 bottom-0 w-[2px] bg-white/10 rounded-full" />
 
         <div className="space-y-5">
@@ -201,15 +193,20 @@ export default async function OverviewPage({
             const isPlayed = e.locked;
 
             const icon = iconForType(e.event_type);
-            const winner = isPlayed ? winnerByEvent.get(e.id) ?? null : null;
+            const winners = isPlayed ? winnersByEvent.get(e.id) ?? [] : [];
+
+            // show 2 winners only for team, else show first winner
+            const winnersToShow =
+              e.event_type === "LAGTÄVLING" ? winners.slice(0, 2) : winners.slice(0, 1);
 
             return (
               <Link
                 key={e.id}
                 href={`/events/${e.id}${seasonQuery}`}
                 className={[
-                  "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition",
-                  "pl-16 pr-5 py-4 overflow-hidden",
+                  "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition overflow-hidden",
+                  "pl-16 pr-5 py-4",
+                  "h-[150px] sm:h-[140px]", // ✅ locked height for symmetry
                   isPlayed ? "opacity-90" : "",
                   isNext
                     ? "ring-1 ring-blue-400/45 shadow-[0_0_34px_rgba(80,140,255,0.35)] bg-white/7"
@@ -217,34 +214,39 @@ export default async function OverviewPage({
                 ].join(" ")}
                 title="Öppna tävling"
               >
-                {/* Background course image 10% */}
+                {/* background image 20% */}
                 {e.image_url ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={e.image_url}
                       alt=""
-                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.10]"
+                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.20]"
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/35 via-black/10 to-black/25" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/45 via-black/20 to-black/35" />
                   </>
                 ) : null}
 
-                {/* node + pulsing dot */}
+                {/* node */}
                 <div className="absolute left-[18px] top-6">
                   <div
                     className={[
-                      "h-4 w-4 rounded-full border border-white/20 bg-black/40",
-                      isPlayed ? "bg-emerald-500/20 border-emerald-400/40" : "",
+                      "h-4 w-4 rounded-full border border-white/20 bg-black/40 flex items-center justify-center",
+                      isPlayed ? "bg-emerald-500/25 border-emerald-400/50" : "",
                       isNext ? "border-blue-400/60 bg-blue-400/20" : "",
                     ].join(" ")}
-                  />
+                    title={isPlayed ? "Spelad" : "Kommande"}
+                  >
+                    {/* ✅ green check inside circle (no extra badge) */}
+                    {isPlayed ? <span className="text-[10px] leading-none text-emerald-200">✓</span> : null}
+                  </div>
+
                   {isNext ? (
                     <div className="absolute -inset-2 rounded-full border border-blue-400/40 animate-ping" />
                   ) : null}
                 </div>
 
-                {/* Big icon */}
+                {/* big icon */}
                 <div className="absolute left-3 top-1/2 -translate-y-1/2">
                   <div className={isNext ? "h-16 w-16" : "h-14 w-14"}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -259,24 +261,19 @@ export default async function OverviewPage({
                       ].join(" ")}
                       style={
                         isNext
-                          ? {
-                              filter: "drop-shadow(0 0 14px rgba(100,170,255,0.55))",
-                            }
+                          ? { filter: "drop-shadow(0 0 16px rgba(120,190,255,0.60))" }
                           : undefined
                       }
                     />
                   </div>
                 </div>
 
-                {/* Content */}
-                <div className="flex flex-col gap-2 relative">
+                {/* content */}
+                <div className="relative flex flex-col gap-1">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      {/* 👇 Byt namn -> typ */}
                       <div className="flex items-center gap-2">
-                        <div className="text-[11px] text-white/65">
-                          {typeLabel(e.event_type)}
-                        </div>
+                        <div className="text-[11px] text-white/70">{typeLabel(e.event_type)}</div>
 
                         {isNext ? (
                           <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-2 py-0.5 text-[11px] text-blue-200">
@@ -285,7 +282,7 @@ export default async function OverviewPage({
                         ) : null}
                       </div>
 
-                      {/* Course (no truncation) */}
+                      {/* course full (no truncation) */}
                       <div className="mt-1 font-semibold text-lg leading-snug break-words">
                         {e.course ?? "Bana ej angiven"}
                       </div>
@@ -295,9 +292,9 @@ export default async function OverviewPage({
                       </div>
                     </div>
 
-                    {/* Right side: if NOT locked -> show badge here */}
+                    {/* if not played show "Kommande" on right */}
                     {!isPlayed ? (
-                      <span className="rounded-full border border-white/15 bg-black/40 px-2 py-1 text-[11px] text-white/80 backdrop-blur shrink-0">
+                      <span className="rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[11px] text-white/85 backdrop-blur shrink-0">
                         Kommande
                       </span>
                     ) : (
@@ -305,30 +302,18 @@ export default async function OverviewPage({
                     )}
                   </div>
 
-                  {/* Winner (locked) */}
-                  {winner ? (
-                    <div className="mt-1 flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">🥇</span>
-                        <AvatarTiny url={winner.avatar_url} name={winner.name} />
-                        <span className="text-sm text-white/85 truncate">{winner.name}</span>
-                      </div>
-
-                      {/* Spelad badge UNDER winner */}
-                      <div>
-                        <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">
-                          ✓ Spelad
-                        </span>
-                      </div>
+                  {/* winners (locked) */}
+                  {isPlayed && winnersToShow.length ? (
+                    <div className="mt-2 space-y-1">
+                      {winnersToShow.map((w) => (
+                        <div key={w.person_id} className="flex items-center gap-2">
+                          <span className="text-base">🥇</span>
+                          <AvatarTiny url={w.avatar_url} name={w.name} />
+                          <span className="text-sm text-white/85 truncate">{w.name}</span>
+                        </div>
+                      ))}
                     </div>
                   ) : null}
-
-                  {/* settings */}
-                  <div className="flex flex-wrap gap-2">
-                    <Pill>🌬️ {e.setting_wind ?? "—"}</Pill>
-                    <Pill>⛳ {e.setting_tee_meters ?? "—"}</Pill>
-                    <Pill>📍 {e.setting_pins ?? "—"}</Pill>
-                  </div>
                 </div>
               </Link>
             );

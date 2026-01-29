@@ -35,7 +35,6 @@ function typeLabel(t: string) {
 }
 
 function iconForType(t: string) {
-  // dina nya ikoner
   if (t === "FINAL") return "/icons/final-1.png";
   if (t === "MAJOR") return "/icons/major-1.png";
   if (t === "LAGTÄVLING") return "/icons/lagtavling-1.png";
@@ -44,7 +43,6 @@ function iconForType(t: string) {
 
 function fmtDateWithYear(iso: string) {
   const d = new Date(iso);
-  // Ex: "18 jan. 2026"
   return d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
 }
 
@@ -74,7 +72,6 @@ function AvatarTiny({ url, name }: { url: string | null; name: string }) {
   );
 }
 
-// progress ring (SVG) – minimalistisk
 function ProgressRing({ done, total }: { done: number; total: number }) {
   const r = 16;
   const c = 2 * Math.PI * r;
@@ -144,7 +141,6 @@ export default async function OverviewPage({
 
   const seasonQuery = `?season=${encodeURIComponent(season.id)}`;
 
-  // events
   const eventsResp = await sb
     .from("events")
     .select("id,season_id,name,event_type,starts_at,course,image_url,setting_wind,setting_tee_meters,setting_pins,locked")
@@ -155,8 +151,6 @@ export default async function OverviewPage({
 
   const totalCount = events.length;
   const doneCount = events.filter((e) => e.locked).length;
-
-  // next up = första olåsta i datumordning
   const nextUp = events.find((e) => !e.locked) ?? null;
 
   // winners for locked events (placering 1)
@@ -185,15 +179,12 @@ export default async function OverviewPage({
 
   return (
     <main className="space-y-6">
-      {/* Header */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="text-sm text-white/60">Säsongsöverblick</div>
             <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
-            <div className="mt-2 text-white/60">
-              Scrolla tidslinjen för hela säsongen. Klicka på en tävling för att öppna den.
-            </div>
+            <div className="mt-2 text-white/60">Scrolla tidslinjen för hela säsongen.</div>
           </div>
 
           <ProgressRing done={doneCount} total={totalCount} />
@@ -202,7 +193,6 @@ export default async function OverviewPage({
 
       {/* Timeline */}
       <section className="relative">
-        {/* vertical line */}
         <div className="absolute left-6 top-0 bottom-0 w-[2px] bg-white/10 rounded-full" />
 
         <div className="space-y-5">
@@ -219,31 +209,44 @@ export default async function OverviewPage({
                 href={`/events/${e.id}${seasonQuery}`}
                 className={[
                   "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition",
-                  "pl-16 pr-5 py-4",
-                  isPlayed ? "opacity-80" : "",
+                  "pl-16 pr-5 py-4 overflow-hidden",
+                  isPlayed ? "opacity-90" : "",
                   isNext
-                    ? "ring-1 ring-blue-400/35 shadow-[0_0_24px_rgba(80,140,255,0.25)] bg-white/7"
+                    ? "ring-1 ring-blue-400/45 shadow-[0_0_34px_rgba(80,140,255,0.35)] bg-white/7"
                     : "hover:bg-white/10",
                 ].join(" ")}
                 title="Öppna tävling"
               >
+                {/* Background course image 10% */}
+                {e.image_url ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={e.image_url}
+                      alt=""
+                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.10]"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/35 via-black/10 to-black/25" />
+                  </>
+                ) : null}
+
                 {/* node + pulsing dot */}
                 <div className="absolute left-[18px] top-6">
                   <div
                     className={[
                       "h-4 w-4 rounded-full border border-white/20 bg-black/40",
                       isPlayed ? "bg-emerald-500/20 border-emerald-400/40" : "",
-                      isNext ? "border-blue-400/50 bg-blue-400/15" : "",
+                      isNext ? "border-blue-400/60 bg-blue-400/20" : "",
                     ].join(" ")}
                   />
                   {isNext ? (
-                    <div className="absolute -inset-2 rounded-full border border-blue-400/30 animate-ping" />
+                    <div className="absolute -inset-2 rounded-full border border-blue-400/40 animate-ping" />
                   ) : null}
                 </div>
 
-                {/* Big icon (focus) */}
+                {/* Big icon */}
                 <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  <div className={isNext ? "h-14 w-14" : "h-12 w-12"}>
+                  <div className={isNext ? "h-16 w-16" : "h-14 w-14"}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={icon}
@@ -251,33 +254,39 @@ export default async function OverviewPage({
                       className={[
                         "h-full w-full object-contain drop-shadow",
                         "transition-transform duration-150",
+                        isNext ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
                         "group-hover:scale-[1.06]",
                       ].join(" ")}
+                      style={
+                        isNext
+                          ? {
+                              filter: "drop-shadow(0 0 14px rgba(100,170,255,0.55))",
+                            }
+                          : undefined
+                      }
                     />
                   </div>
                 </div>
 
                 {/* Content */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 relative">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
+                      {/* 👇 Byt namn -> typ */}
                       <div className="flex items-center gap-2">
-                        <div className="font-semibold text-lg truncate">{e.name}</div>
+                        <div className="text-[11px] text-white/65">
+                          {typeLabel(e.event_type)}
+                        </div>
 
                         {isNext ? (
                           <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-2 py-0.5 text-[11px] text-blue-200">
                             Nästa
                           </span>
                         ) : null}
-
-                        {isPlayed ? (
-                          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">
-                            ✓ Spelad
-                          </span>
-                        ) : null}
                       </div>
 
-                      <div className="mt-1 text-sm text-white/60 truncate">
+                      {/* Course (no truncation) */}
+                      <div className="mt-1 font-semibold text-lg leading-snug break-words">
                         {e.course ?? "Bana ej angiven"}
                       </div>
 
@@ -286,17 +295,33 @@ export default async function OverviewPage({
                       </div>
                     </div>
 
-                    {/* Winner (only locked) */}
-                    {winner ? (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-base">🥇</span>
-                        <AvatarTiny url={winner.avatar_url} name={winner.name} />
-                        <span className="text-sm text-white/85 max-w-[140px] truncate">{winner.name}</span>
-                      </div>
+                    {/* Right side: if NOT locked -> show badge here */}
+                    {!isPlayed ? (
+                      <span className="rounded-full border border-white/15 bg-black/40 px-2 py-1 text-[11px] text-white/80 backdrop-blur shrink-0">
+                        Kommande
+                      </span>
                     ) : (
                       <div className="shrink-0" />
                     )}
                   </div>
+
+                  {/* Winner (locked) */}
+                  {winner ? (
+                    <div className="mt-1 flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🥇</span>
+                        <AvatarTiny url={winner.avatar_url} name={winner.name} />
+                        <span className="text-sm text-white/85 truncate">{winner.name}</span>
+                      </div>
+
+                      {/* Spelad badge UNDER winner */}
+                      <div>
+                        <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[11px] text-emerald-200">
+                          ✓ Spelad
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {/* settings */}
                   <div className="flex flex-wrap gap-2">

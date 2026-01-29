@@ -45,6 +45,7 @@ type ResultRow = {
   lag_score: number | null;
   season_players: {
     person_id: string;
+    hcp: number | null; // ✅ NYTT (för Start inkl. PN-HCP i final)
     people: { name: string; avatar_url: string | null } | null;
   } | null;
 };
@@ -197,7 +198,6 @@ async function computePrelimFinalStartlist(
     };
   });
 
-  // sort on start incl hcp (lägst först)
   rows.sort((a, b) => a.start_incl_hcp - b.start_incl_hcp);
 
   return rows.map((r, idx) => ({
@@ -222,7 +222,7 @@ function computeSharedPlacings(sorted: ResultRow[]): Map<string, number> {
       place = 1;
     } else {
       if (prevScore !== s) {
-        place = i + 1; // hoppar över placeringar
+        place = i + 1;
       }
     }
 
@@ -293,7 +293,8 @@ export default async function EventDetailPage({
     const resResp = await sb
       .from("results")
       .select(
-        "event_id,season_player_id,gross_strokes,hcp_strokes,net_strokes,adjusted_score,placering,poang,did_not_play,lag_nr,lag_score,season_players(person_id,people(name,avatar_url))"
+        // ✅ Enda ändringen här: season_players(hcp, ...)
+        "event_id,season_player_id,gross_strokes,hcp_strokes,net_strokes,adjusted_score,placering,poang,did_not_play,lag_nr,lag_score,season_players(person_id,hcp,people(name,avatar_url))"
       )
       .eq("event_id", event.id);
 
@@ -459,7 +460,7 @@ export default async function EventDetailPage({
         </section>
       )}
 
-      {/* FINAL: locked -> #, Spelare, Netto, Start, Brutto */}
+      {/* FINAL: locked -> #, Spelare, Netto, Start (inkl PN-HCP), Brutto */}
       {isFinal && event.locked && (
         <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <h2 className="font-semibold">Finalresultat</h2>
@@ -480,9 +481,15 @@ export default async function EventDetailPage({
                 {individualSorted.map((r) => {
                   const name = r.season_players?.people?.name ?? "Okänd";
                   const personId = r.season_players?.person_id ?? "";
-                  const start = startScoreMap.get(r.season_player_id) ?? 0;
+
                   const pl = sharedPlacingMap.get(r.season_player_id) ?? r.placering ?? "—";
                   const netto = r.adjusted_score ?? null;
+
+                  // ✅ ENDA LOGIKÄNDRINGEN: Start inkl PN-HCP (0/2/4)
+                  const baseStart = startScoreMap.get(r.season_player_id) ?? 0;
+                  const hcp = Number(r.season_players?.hcp ?? 0);
+                  const pnHcp = hcpToStrokes(hcp, rules);
+                  const start = baseStart - pnHcp;
 
                   return (
                     <tr key={r.season_player_id}>
@@ -526,7 +533,6 @@ export default async function EventDetailPage({
           {!event.locked ? (
             <p className="mt-2 text-white/70">Resultat visas här när tävlingen är spelad och låst.</p>
           ) : isTeam ? (
-            // Team block unchanged
             <div className="mt-3 space-y-3">
               {teamSorted.map((t) => (
                 <div key={t.lag_nr} className="rounded-xl border border-white/10 bg-black/20 p-3">
@@ -552,7 +558,6 @@ export default async function EventDetailPage({
               ))}
             </div>
           ) : (
-            // ✅ Regular/Major table UPDATED -> #, Spelare, Netto, Poäng
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-white/60">

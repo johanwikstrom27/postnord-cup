@@ -161,9 +161,7 @@ function MiniCard({
       <div className="flex h-[120px] items-stretch gap-4 p-4">
         <div className="min-w-0 flex-1">
           <div className="text-[10px] text-white/60">{kicker}</div>
-          <div className="mt-1 text-sm font-semibold leading-snug overflow-hidden">
-            {title}
-          </div>
+          <div className="mt-1 text-sm font-semibold leading-snug overflow-hidden">{title}</div>
           {sub ? <div className="mt-1 text-[10px] text-white/60 truncate">{sub}</div> : null}
           {children ? <div className="mt-2">{children}</div> : null}
         </div>
@@ -190,7 +188,11 @@ function NextEventBig({ event, seasonQuery }: { event: EventRow | null; seasonQu
     >
       <div className="relative h-52 sm:h-56 w-full overflow-hidden bg-black/20">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={event.image_url ?? "/icons/pncuplogga.png"} alt={event.name} className="h-full w-full object-cover" />
+        <img
+          src={event.image_url ?? "/icons/pncuplogga.png"}
+          alt={event.name}
+          className="h-full w-full object-cover"
+        />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-black/10 to-transparent" />
         <div className="absolute left-4 top-4 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
           Kommande
@@ -210,9 +212,15 @@ function NextEventBig({ event, seasonQuery }: { event: EventRow | null; seasonQu
         </div>
 
         <div className="flex flex-wrap gap-2 text-[11px] text-white/75">
-          {event.setting_wind && <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">🌬️ {event.setting_wind}</span>}
-          {event.setting_tee_meters && <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">⛳ {event.setting_tee_meters}</span>}
-          {event.setting_pins && <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">📍 {event.setting_pins}</span>}
+          {event.setting_wind && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">🌬️ {event.setting_wind}</span>
+          )}
+          {event.setting_tee_meters && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">⛳ {event.setting_tee_meters}</span>
+          )}
+          {event.setting_pins && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1">📍 {event.setting_pins}</span>
+          )}
         </div>
       </div>
     </Link>
@@ -230,7 +238,12 @@ export default async function Page() {
   let season = (currentResp.data as SeasonRow | null) ?? null;
 
   if (!season) {
-    const latestResp = await sb.from("seasons").select("id,name,created_at").order("created_at", { ascending: false }).limit(1).single();
+    const latestResp = await sb
+      .from("seasons")
+      .select("id,name,created_at")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
     season = (latestResp.data as SeasonRow | null) ?? null;
   }
 
@@ -245,7 +258,8 @@ export default async function Page() {
     .single();
 
   const rules =
-    ((rulesResp.data as RulesRow | null) ?? null) ?? ({
+    ((rulesResp.data as RulesRow | null) ?? null) ??
+    ({
       vanlig_best_of: 4,
       major_best_of: 3,
       lagtavling_best_of: 2,
@@ -357,17 +371,19 @@ export default async function Page() {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-  src="/icons/pncuplogga-v4.png"
-  alt="PostNord Cup"
-  className="
-    h-22 w-22
-    sm:h-16 sm:w-16
-    md:h-20 md:w-20
-    lg:h-24 lg:w-24
-    object-contain
-    shrink-0
-  "
-/>
+              src="/icons/pncuplogga-v4.png"
+              alt="PostNord Cup"
+              className="
+                h-22 w-22
+                sm:h-16 sm:w-16
+                md:h-20 md:w-20
+                lg:h-24 lg:w-24
+                object-contain
+                shrink-0
+                animate-[pnLogoGlow_3.2s_ease-in-out_infinite]
+              "
+              style={{ willChange: "transform, filter" }}
+            />
           </div>
 
           {/* Title (no ellipsis) */}

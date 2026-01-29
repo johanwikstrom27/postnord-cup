@@ -58,7 +58,7 @@ function AvatarTiny({ url, name }: { url: string | null; name: string }) {
   );
 }
 
-// Progress ring (SVG) – text centrerad mot ringen
+// Progress ring – centrerad text
 function ProgressRing({ done, total }: { done: number; total: number }) {
   const r = 16;
   const c = 2 * Math.PI * r;
@@ -81,7 +81,6 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
           transform="rotate(-90 20 20)"
         />
       </svg>
-
       <div className="leading-tight">
         <div className="text-sm font-semibold">Spelade {done}/{total}</div>
       </div>
@@ -137,7 +136,7 @@ export default async function OverviewPage({
   const doneCount = events.filter((e) => e.locked).length;
   const nextUp = events.find((e) => !e.locked) ?? null;
 
-  // Winners (placering 1). Team can have 2 rows.
+  // Winners for locked events (placering 1). Team can have 2 rows.
   const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
   const winnersByEvent = new Map<string, Array<{ person_id: string; name: string; avatar_url: string | null }>>();
 
@@ -172,7 +171,6 @@ export default async function OverviewPage({
             <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
             <div className="mt-2 text-white/60">Tidslinje för säsongen.</div>
           </div>
-
           <ProgressRing done={doneCount} total={totalCount} />
         </div>
       </section>
@@ -187,7 +185,6 @@ export default async function OverviewPage({
 
             const icon = iconForType(e.event_type);
             const winners = isPlayed ? winnersByEvent.get(e.id) ?? [] : [];
-
             const winnersToShow = e.event_type === "LAGTÄVLING" ? winners.slice(0, 2) : winners.slice(0, 1);
 
             return (
@@ -197,24 +194,24 @@ export default async function OverviewPage({
                 className={[
                   "group relative block rounded-2xl border border-white/10 bg-white/5 backdrop-blur transition overflow-hidden",
                   "pl-16 pr-5 py-4",
-                  "h-[172px] sm:h-[160px]", // ✅ lite högre än innan
+                  "h-[180px] sm:h-[168px]", // lite högre
                   isPlayed ? "opacity-90" : "",
                   isNext
-                    ? "ring-1 ring-blue-400/45 shadow-[0_0_40px_rgba(80,140,255,0.42)] bg-white/7"
+                    ? "ring-1 ring-blue-400/55 shadow-[0_0_46px_rgba(80,140,255,0.55)] bg-white/8"
                     : "hover:bg-white/10",
                 ].join(" ")}
                 title="Öppna tävling"
               >
-                {/* background image 20% */}
+                {/* background image 30% */}
                 {e.image_url ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={e.image_url}
                       alt=""
-                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.20]"
+                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.30]"
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/45 via-black/20 to-black/35" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/55 via-black/25 to-black/40" />
                   </>
                 ) : null}
 
@@ -236,9 +233,9 @@ export default async function OverviewPage({
                   ) : null}
                 </div>
 
-                {/* big icon (bigger + lower) */}
-                <div className="absolute left-3 top-[56%] -translate-y-1/2">
-                  <div className={isNext ? "h-18 w-18" : "h-16 w-16"}>
+                {/* trophy icon – fixed size for ALL, moved slightly down */}
+                <div className="absolute left-3 top-[60%] -translate-y-1/2">
+                  <div className="h-16 w-16">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={icon}
@@ -246,16 +243,16 @@ export default async function OverviewPage({
                       className={[
                         "h-full w-full object-contain drop-shadow",
                         "transition-transform duration-150",
-                        isNext ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
                         "group-hover:scale-[1.06]",
+                        isNext ? "animate-[pulse_2s_ease-in-out_infinite]" : "",
                       ].join(" ")}
-                      style={isNext ? { filter: "drop-shadow(0 0 18px rgba(120,190,255,0.65))" } : undefined}
+                      style={isNext ? { filter: "drop-shadow(0 0 18px rgba(120,190,255,0.70))" } : undefined}
                     />
                   </div>
                 </div>
 
-                {/* content */}
-                <div className="relative flex flex-col gap-2">
+                {/* content – pushed further right so trophy never overlaps */}
+                <div className="relative flex flex-col gap-2 pl-10">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -286,9 +283,9 @@ export default async function OverviewPage({
                     )}
                   </div>
 
-                  {/* winners (locked) – extra spacing so it feels airy */}
+                  {/* winners */}
                   {isPlayed && winnersToShow.length ? (
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-3 space-y-2">
                       {winnersToShow.map((w) => (
                         <div key={w.person_id} className="flex items-center gap-2">
                           <span className="text-base">🥇</span>

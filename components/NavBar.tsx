@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const LINKS = [
   { href: "/", label: "Hem" },
+  { href: "/overview", label: "Överblick" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/events", label: "Tävlingar" },
   { href: "/players", label: "Spelare" },

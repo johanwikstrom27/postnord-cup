@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import NotificationBell from "@/components/NotificationBell";
+
 const LINKS = [
   { href: "/", label: "Hem" },
   { href: "/overview", label: "Överblick" },
@@ -75,12 +77,18 @@ export default function NavBar() {
 
             <div className="min-w-0 leading-tight">
               <div className="font-semibold text-white truncate">PostNord Cup</div>
-              <div className="text-xs text-white/60 truncate">Trackman @ Troxhammar GK</div>
+              <div className="text-xs text-white/60 truncate">
+                Trackman @ Troxhammar GK
+              </div>
             </div>
           </Link>
 
-          {/* Right: compact menu button (never sticks out) */}
-          <div className="relative flex items-center">
+          {/* Right side: notification bell + menu */}
+          <div className="relative flex items-center gap-2">
+            {/* 🔔 Notification bell */}
+            <NotificationBell />
+
+            {/* ☰ Menu button */}
             <button
               ref={menuBtnRef}
               type="button"
@@ -93,12 +101,11 @@ export default function NavBar() {
               aria-expanded={open}
               aria-label="Öppna meny"
             >
-              {/* Label hidden on very small widths */}
               <span className="hidden sm:inline truncate">{activeLabel}</span>
               <span className="text-base leading-none">{open ? "✕" : "☰"}</span>
             </button>
 
-            {/* Dropdown overlay (right aligned under button) */}
+            {/* Dropdown */}
             {open && (
               <>
                 {/* click-catcher */}
@@ -124,12 +131,13 @@ export default function NavBar() {
                           ].join(" ")}
                         >
                           <span>{l.label}</span>
-                          {active ? <span className="text-[10px] text-white/60">Aktiv</span> : null}
+                          {active ? (
+                            <span className="text-[10px] text-white/60">Aktiv</span>
+                          ) : null}
                         </Link>
                       );
                     })}
 
-                    {/* Admin in dropdown (more space in navbar) */}
                     <div className="my-2 border-t border-white/10" />
 
                     <Link

@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
+import { notifyOnEventLocked } from "@/lib/notifyOnLock";
 
 export const runtime = "nodejs";
-
-function getOriginFromEnv() {
-  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
-}
 
 export async function POST(_: Request, ctx: { params: { id: string } | Promise<{ id: string }> }) {
   const { id: eventId } = await ctx.params;
@@ -28,17 +23,10 @@ export async function POST(_: Request, ctx: { params: { id: string } | Promise<{
 
   const after = Boolean(ev2.data?.locked);
 
-  // ✅ Om vi precis låste: trigga pushnotiser
+  // ✅ If just locked: trigger notifications (works in preview too)
   if (afterWanted === true && after === true) {
-    const origin = getOriginFromEnv();
-    const secret = process.env.CRON_SECRET || "";
-
     try {
-      await fetch(`${origin}/api/admin/notify-on-lock`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-cron-secret": secret },
-        body: JSON.stringify({ event_id: eventId }),
-      });
+      await notifyOnEventLocked(eventId);
     } catch {
       // ignore
     }

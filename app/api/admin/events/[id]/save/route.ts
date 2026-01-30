@@ -136,7 +136,11 @@ function finalStartForRank(rank: number, rules: Rules): number {
   return Number.isFinite(last) ? last : 0;
 }
 
-async function getPointsMap(sb: ReturnType<typeof supabaseServer>, seasonId: string, eventType: string): Promise<Map<number, number>> {
+async function getPointsMap(
+  sb: ReturnType<typeof supabaseServer>,
+  seasonId: string,
+  eventType: string
+): Promise<Map<number, number>> {
   const resp = await sb
     .from("points_table")
     .select("placering,poang")
@@ -168,16 +172,10 @@ function fallbackPoints(eventType: string, placing: number): number {
 
 /**
  * ✅ Ties + särspel
- * - score-grupper (netto/adjusted)
- * - override_placing = placering inom gruppen (1/2/2...)
- * - om bara vinnaren har override=1 och andra saknar => de blir "2" automatiskt
- * - nästa score-grupp börjar groupStart + groupSize => 1,2,2,4...
  */
-function assignPlacingsByScore<T extends { override_placing: number | null; placering: number | null; poang: number }>(
-  sorted: T[],
-  scoreOf: (r: T) => number,
-  pointsFor: (placing: number) => number
-) {
+function assignPlacingsByScore<
+  T extends { override_placing: number | null; placering: number | null; poang: number }
+>(sorted: T[], scoreOf: (r: T) => number, pointsFor: (placing: number) => number) {
   let groupStart = 1;
   let i = 0;
 
@@ -191,7 +189,6 @@ function assignPlacingsByScore<T extends { override_placing: number | null; plac
       j++;
     }
 
-    // största override i gruppen
     let maxOv = 0;
     for (const r of group) {
       const ov = r.override_placing;
@@ -200,14 +197,8 @@ function assignPlacingsByScore<T extends { override_placing: number | null; plac
 
     for (const r of group) {
       const ov = r.override_placing;
-
-      // placering inom gruppen:
-      // - om override anges => använd den
-      // - annars => hamnar direkt efter max override i gruppen (ex: vinnare=1 => andra=2)
       const within =
-        typeof ov === "number" && Number.isFinite(ov) && ov > 0
-          ? ov
-          : Math.max(1, maxOv + 1);
+        typeof ov === "number" && Number.isFinite(ov) && ov > 0 ? ov : Math.max(1, maxOv + 1);
 
       const placing = groupStart + (within - 1);
       r.placering = placing;
@@ -220,7 +211,7 @@ function assignPlacingsByScore<T extends { override_placing: number | null; plac
 }
 
 /**
- * FINAL startscore rebuild (samma som du haft)
+ * FINAL startscore rebuild
  */
 async function rebuildFinalStartScores(
   sb: ReturnType<typeof supabaseServer>,
@@ -267,10 +258,7 @@ async function rebuildFinalStartScores(
 
   const totals = spIds.map((id) => {
     const b = bySp.get(id)!;
-    const total =
-      sumTopN(b.vanlig, vanligBest) +
-      sumTopN(b.major, majorBest) +
-      sumTopN(b.lag, lagBest);
+    const total = sumTopN(b.vanlig, vanligBest) + sumTopN(b.major, majorBest) + sumTopN(b.lag, lagBest);
     return { season_player_id: id, total };
   });
 
@@ -289,6 +277,12 @@ async function rebuildFinalStartScores(
   const map = new Map<string, number>();
   for (const u of upserts) map.set(u.season_player_id, Number(u.start_score));
   return map;
+}
+
+function getBaseOrigin() {
+  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
 }
 
 export async function POST(req: NextRequest, ctx: { params: { id: string } | Promise<{ id: string }> }) {
@@ -352,7 +346,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     }
   }
 
-  // Build rows (IMPORTANT: save override_placing + placering_override)
+  // Build rows
   const rows = entries.map((e) => {
     const hcp = Number(hcpBySp.get(e.season_player_id) ?? 0);
     const hcp_strokes = hcpToStrokes(hcp, rules);
@@ -369,9 +363,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
       gross_strokes: gross,
       did_not_play: e.did_not_play,
 
-      // ✅ the one you actually have (and your UI reads)
       override_placing: e.override_placing,
-      // ✅ also keep your legacy column
       placering_override: e.override_placing,
 
       hcp_strokes,
@@ -382,7 +374,6 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
       poang: 0,
       disqualified: false,
 
-      // team fields are irrelevant here but keep schema safe
       lag_nr: e.lag_nr ?? null,
       lag_score: e.lag_score ?? null,
     };
@@ -392,25 +383,47 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   if (isFinal) {
     const playable = rows
       .filter((r) => !r.did_not_play && r.adjusted_score != null)
-      .sort((a, b) => Number(a.adjusted_score) - Number(b.adjusted_score) || (a.override_placing ?? 999) - (b.override_placing ?? 999));
+      .sort(
+        (a, b) =>
+          Number(a.adjusted_score) - Number(b.adjusted_score) ||
+          (a.override_placing ?? 999) - (b.override_placing ?? 999)
+      );
 
     assignPlacingsByScore(playable as any, (r: any) => Number(r.adjusted_score), pointsFor);
   } else {
     const playable = rows
       .filter((r) => !r.did_not_play && r.net_strokes != null)
-      .sort((a, b) => Number(a.net_strokes) - Number(b.net_strokes) || (a.override_placing ?? 999) - (b.override_placing ?? 999));
+      .sort(
+        (a, b) =>
+          Number(a.net_strokes) - Number(b.net_strokes) ||
+          (a.override_placing ?? 999) - (b.override_placing ?? 999)
+      );
 
     assignPlacingsByScore(playable as any, (r: any) => Number(r.net_strokes), pointsFor);
   }
 
-  // Persist
+  // Persist results
   const up = await sb.from("results").upsert(rows, { onConflict: "event_id,season_player_id" });
   if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 });
 
-  // Lock if requested
+  // Lock if requested (✅ notify here!)
   if (lock) {
     const l = await sb.from("events").update({ locked: true }).eq("id", eventId);
     if (l.error) return NextResponse.json({ error: l.error.message }, { status: 500 });
+
+    // 🔔 trigger notify-on-lock (prod)
+    try {
+      const origin = getBaseOrigin();
+      const secret = process.env.CRON_SECRET || "";
+      await fetch(`${origin}/api/admin/notify-on-lock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-cron-secret": secret },
+        body: JSON.stringify({ event_id: eventId }),
+      });
+    } catch {
+      // ignore
+    }
+
     return NextResponse.json({ ok: true, locked: true });
   }
 

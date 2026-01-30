@@ -191,7 +191,7 @@ export default function NotificationBell() {
             // centered under icon
             "absolute left-1/2 top-full mt-2 -translate-x-1/2",
             // ✅ narrower + never overflow viewport
-            "w-[300px] max-w-[calc(100vw-24px)]",
+            "w-[250px] max-w-[calc(100vw-24px)]",
             // style
             "rounded-2xl border border-white/10 bg-[#0b1220] shadow-2xl p-4 z-50",
             "origin-top",

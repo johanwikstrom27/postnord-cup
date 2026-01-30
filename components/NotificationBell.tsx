@@ -189,7 +189,7 @@ export default function NotificationBell() {
           ref={dropRef}
           className={[
             // centered under icon
-            "absolute left-1/2 top-full mt-2 -translate-x-[60%]",
+            "absolute left-1/2 top-full mt-2 -translate-x-[75%]",
             // ✅ narrower + never overflow viewport
             "w-[250px] max-w-[calc(100vw-24px)]",
             // style

@@ -3,6 +3,12 @@ import { supabaseServer } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
+function getOriginFromEnv() {
+  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 export async function POST(_: Request, ctx: { params: { id: string } | Promise<{ id: string }> }) {
   const { id: eventId } = await ctx.params;
   const sb = supabaseServer();
@@ -17,14 +23,14 @@ export async function POST(_: Request, ctx: { params: { id: string } | Promise<{
   const up = await sb.from("events").update({ locked: afterWanted }).eq("id", eventId);
   if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 });
 
-  const ev2 = await sb.from("events").select("id, locked, season_id").eq("id", eventId).single();
+  const ev2 = await sb.from("events").select("id, locked").eq("id", eventId).single();
   if (ev2.error) return NextResponse.json({ error: ev2.error.message }, { status: 500 });
 
   const after = Boolean(ev2.data?.locked);
 
-  // ✅ If we just locked: trigger notifications
-  if (afterWanted && after) {
-    const origin = process.env.APP_ORIGIN || "http://localhost:3000";
+  // ✅ Om vi precis låste: trigga pushnotiser
+  if (afterWanted === true && after === true) {
+    const origin = getOriginFromEnv();
     const secret = process.env.CRON_SECRET || "";
 
     try {

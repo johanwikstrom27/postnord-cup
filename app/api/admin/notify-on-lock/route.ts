@@ -12,6 +12,15 @@ function typeLabel(t: string) {
   return t;
 }
 
+function getOriginFromEnv() {
+  // 1) Explicit origin
+  if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN;
+  // 2) Vercel auto (Preview/Prod)
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  // 3) local fallback
+  return "http://localhost:3000";
+}
+
 async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: string) {
   const rulesResp = await sb
     .from("season_rules")
@@ -53,6 +62,7 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
     if (!t || t === "FINAL") continue;
     const b = bySp.get(r.season_player_id);
     if (!b) continue;
+
     const pts = Number(r.poang ?? 0);
     if (t === "VANLIG") b.vanlig.push(pts);
     else if (t === "MAJOR") b.major.push(pts);
@@ -76,9 +86,12 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
 }
 
 export async function POST(req: Request) {
+  // Skydda så bara interna serverkall kan trigga
   const secret = process.env.CRON_SECRET || "";
   const got = req.headers.get("x-cron-secret") || "";
-  if (!secret || got !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!secret || got !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const sb = supabaseServer();
   const body = await req.json().catch(() => ({}));
@@ -96,10 +109,12 @@ export async function POST(req: Request) {
   if (event.locked !== true) return NextResponse.json({ ok: true, skipped: "not locked" });
 
   const seasonId = String(event.season_id);
-  const origin = process.env.APP_ORIGIN || "http://localhost:3000";
-  const eventUrl = `${origin}/events/${eventId}?season=${encodeURIComponent(seasonId)}`;
+  const origin = getOriginFromEnv();
 
-  // winners (placering 1). Team: två vinnare.
+  const eventUrl = `${origin}/events/${eventId}?season=${encodeURIComponent(seasonId)}`;
+  const homeUrl = `${origin}/?season=${encodeURIComponent(seasonId)}`;
+
+  // 1) RESULTAT-NOTIS (vinnare)
   const wResp = await sb
     .from("results")
     .select("placering, season_players(person_id, people(name))")
@@ -116,14 +131,13 @@ export async function POST(req: Request) {
   const course = event.course ?? event.name;
   const format = typeLabel(String(event.event_type));
 
-  // results notification (always on lock)
   await sendToSubscribers("results", {
     title: `🥇 ${winnerText} vinner på ${course} – ${format}`,
     body: "Resultat publicerat i appen",
     url: eventUrl,
   });
 
-  // leader notification only if changed
+  // 2) SERIELEDARE-NOTIS (bara om ändras)
   const leader = await computeLeader(sb, seasonId);
   if (leader?.person_id) {
     const seasonResp = await sb
@@ -135,13 +149,16 @@ export async function POST(req: Request) {
     const prev = (seasonResp.data as any)?.last_notified_leader_person_id ?? null;
 
     if (String(prev ?? "") !== String(leader.person_id)) {
-      const homeUrl = `${origin}/?season=${encodeURIComponent(seasonId)}`;
       await sendToSubscribers("leader", {
         title: "🚨 Ny serieledare 🚨",
         body: `${leader.name} 🔥`,
         url: homeUrl,
       });
-      await sb.from("seasons").update({ last_notified_leader_person_id: leader.person_id }).eq("id", seasonId);
+
+      await sb
+        .from("seasons")
+        .update({ last_notified_leader_person_id: leader.person_id })
+        .eq("id", seasonId);
     }
   }
 

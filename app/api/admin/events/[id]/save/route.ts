@@ -38,7 +38,10 @@ type Entry = {
   season_player_id: string;
   gross_strokes: number | null;
   did_not_play: boolean;
+
+  // ✅ detta är särspelsfältet i din DB: results.override_placing
   override_placing: number | null;
+
   lag_nr: number | null;
   lag_score: number | null;
 };
@@ -46,6 +49,12 @@ type Entry = {
 function safeInt(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+function pickOverride(x: any): number | null {
+  // stöd flera nycklar från klienten
+  const v = x?.override_placing ?? x?.placering_override ?? x?.placing_override ?? null;
+  return v === "" || v == null ? null : safeInt(v);
 }
 
 async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: boolean; unlock?: boolean }> {
@@ -59,7 +68,7 @@ async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: 
       season_player_id: String(x.season_player_id),
       gross_strokes: x.gross_strokes === "" || x.gross_strokes == null ? null : safeInt(x.gross_strokes),
       did_not_play: Boolean(x.did_not_play),
-      override_placing: x.override_placing === "" || x.override_placing == null ? null : safeInt(x.override_placing),
+      override_placing: pickOverride(x),
       lag_nr: x.lag_nr === "" || x.lag_nr == null ? null : safeInt(x.lag_nr),
       lag_score: x.lag_score === "" || x.lag_score == null ? null : safeInt(x.lag_score),
     }));
@@ -82,7 +91,7 @@ async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: 
     season_player_id: String(x.season_player_id),
     gross_strokes: x.gross_strokes === "" || x.gross_strokes == null ? null : safeInt(x.gross_strokes),
     did_not_play: Boolean(x.did_not_play),
-    override_placing: x.override_placing === "" || x.override_placing == null ? null : safeInt(x.override_placing),
+    override_placing: pickOverride(x),
     lag_nr: x.lag_nr === "" || x.lag_nr == null ? null : safeInt(x.lag_nr),
     lag_score: x.lag_score === "" || x.lag_score == null ? null : safeInt(x.lag_score),
   }));
@@ -112,7 +121,6 @@ function sumTopN(values: number[], n: number): number {
 }
 
 function defaultFinalStartScores(): number[] {
-  // rank 1..8, sista gäller rank 9–12
   return [-10, -8, -6, -5, -4, -3, -2, -1, 0];
 }
 
@@ -128,11 +136,11 @@ function finalStartForRank(rank: number, rules: Rules): number {
   return Number.isFinite(last) ? last : 0;
 }
 
-async function getPointsMap(sb: ReturnType<typeof supabaseServer>, eventType: string): Promise<Map<number, number>> {
-  // points_table: event_type, placering, poang
+async function getPointsMap(sb: ReturnType<typeof supabaseServer>, seasonId: string, eventType: string): Promise<Map<number, number>> {
   const resp = await sb
     .from("points_table")
-    .select("placering,poang,event_type")
+    .select("placering,poang")
+    .eq("season_id", seasonId)
     .eq("event_type", eventType);
 
   if (resp.error) throw new Error(resp.error.message);
@@ -159,10 +167,60 @@ function fallbackPoints(eventType: string, placing: number): number {
 }
 
 /**
- * FINAL: Bygger alltid om event_start_scores när man sparar final:
- * - delete where event_id
- * - beräkna total (låsta events, ej FINAL) med best-of
- * - top12 får start_score enligt rules.final_start_scores
+ * ✅ Ties + särspel
+ * - score-grupper (netto/adjusted)
+ * - override_placing = placering inom gruppen (1/2/2...)
+ * - om bara vinnaren har override=1 och andra saknar => de blir "2" automatiskt
+ * - nästa score-grupp börjar groupStart + groupSize => 1,2,2,4...
+ */
+function assignPlacingsByScore<T extends { override_placing: number | null; placering: number | null; poang: number }>(
+  sorted: T[],
+  scoreOf: (r: T) => number,
+  pointsFor: (placing: number) => number
+) {
+  let groupStart = 1;
+  let i = 0;
+
+  while (i < sorted.length) {
+    const score = scoreOf(sorted[i]);
+
+    const group: T[] = [];
+    let j = i;
+    while (j < sorted.length && scoreOf(sorted[j]) === score) {
+      group.push(sorted[j]);
+      j++;
+    }
+
+    // största override i gruppen
+    let maxOv = 0;
+    for (const r of group) {
+      const ov = r.override_placing;
+      if (typeof ov === "number" && Number.isFinite(ov) && ov > maxOv) maxOv = ov;
+    }
+
+    for (const r of group) {
+      const ov = r.override_placing;
+
+      // placering inom gruppen:
+      // - om override anges => använd den
+      // - annars => hamnar direkt efter max override i gruppen (ex: vinnare=1 => andra=2)
+      const within =
+        typeof ov === "number" && Number.isFinite(ov) && ov > 0
+          ? ov
+          : Math.max(1, maxOv + 1);
+
+      const placing = groupStart + (within - 1);
+      r.placering = placing;
+      r.poang = pointsFor(placing);
+    }
+
+    groupStart += group.length;
+    i = j;
+  }
+}
+
+/**
+ * FINAL startscore rebuild (samma som du haft)
  */
 async function rebuildFinalStartScores(
   sb: ReturnType<typeof supabaseServer>,
@@ -207,8 +265,7 @@ async function rebuildFinalStartScores(
     else if (et === "LAGTÄVLING") b.lag.push(pts);
   }
 
-  type Tot = { season_player_id: string; total: number };
-  const totals: Tot[] = spIds.map((id: string) => {
+  const totals = spIds.map((id) => {
     const b = bySp.get(id)!;
     const total =
       sumTopN(b.vanlig, vanligBest) +
@@ -217,10 +274,10 @@ async function rebuildFinalStartScores(
     return { season_player_id: id, total };
   });
 
-  totals.sort((a: Tot, b: Tot) => b.total - a.total);
-  const top12: Tot[] = totals.slice(0, 12);
+  totals.sort((a, b) => b.total - a.total);
+  const top12 = totals.slice(0, 12);
 
-  const upserts = top12.map((t: Tot, idx: number) => ({
+  const upserts = top12.map((t, idx) => ({
     event_id: eventId,
     season_player_id: t.season_player_id,
     start_score: finalStartForRank(idx + 1, rules),
@@ -241,19 +298,14 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   const { entries, lock, unlock } = await parseInput(req);
 
   // Event
-  const evResp = await sb
-    .from("events")
-    .select("id,season_id,event_type,locked")
-    .eq("id", eventId)
-    .single();
-
+  const evResp = await sb.from("events").select("id,season_id,event_type,locked").eq("id", eventId).single();
   if (evResp.error) return NextResponse.json({ error: evResp.error.message }, { status: 500 });
+
   const event = evResp.data as EventRow | null;
   if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
   const seasonId = String(event.season_id);
   const eventType = String(event.event_type);
-  const isTeam = eventType === "LAGTÄVLING";
   const isFinal = eventType === "FINAL";
 
   // Unlock
@@ -263,7 +315,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     return NextResponse.json({ ok: true, locked: false });
   }
 
-  // Rules (incl final_start_scores)
+  // Rules
   const rulesResp = await sb
     .from("season_rules")
     .select("vanlig_best_of,major_best_of,lagtavling_best_of,hcp_zero_max,hcp_two_max,hcp_four_min,final_start_scores")
@@ -273,13 +325,14 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   if (rulesResp.error) return NextResponse.json({ error: rulesResp.error.message }, { status: 500 });
   const rules = (rulesResp.data ?? {}) as Rules;
 
-  // points map
+  // Points
   let ptsMap = new Map<number, number>();
   try {
-    ptsMap = await getPointsMap(sb, eventType);
+    ptsMap = await getPointsMap(sb, seasonId, eventType);
   } catch {
     ptsMap = new Map();
   }
+  const pointsFor = (pl: number) => ptsMap.get(pl) ?? fallbackPoints(eventType, pl);
 
   // HCP map
   const spResp = await sb.from("season_players").select("id,hcp").eq("season_id", seasonId);
@@ -289,7 +342,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   const hcpBySp = new Map<string, number>();
   for (const r of spRows) hcpBySp.set(String(r.id), Number(r.hcp ?? 0));
 
-  // Final startscore map (rebuild always)
+  // Final startscores
   let startScoreMap = new Map<string, number>();
   if (isFinal) {
     try {
@@ -299,10 +352,10 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
     }
   }
 
-  // Build result rows
-  const rows = entries.map((e: Entry) => {
+  // Build rows (IMPORTANT: save override_placing + placering_override)
+  const rows = entries.map((e) => {
     const hcp = Number(hcpBySp.get(e.season_player_id) ?? 0);
-    const hcp_strokes = isTeam ? 0 : hcpToStrokes(hcp, rules);
+    const hcp_strokes = hcpToStrokes(hcp, rules);
 
     const gross = e.gross_strokes;
     const net = gross == null ? null : Math.max(0, gross - hcp_strokes);
@@ -315,90 +368,46 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
       season_player_id: e.season_player_id,
       gross_strokes: gross,
       did_not_play: e.did_not_play,
+
+      // ✅ the one you actually have (and your UI reads)
       override_placing: e.override_placing,
-      lag_nr: e.lag_nr,
-      lag_score: e.lag_score,
+      // ✅ also keep your legacy column
+      placering_override: e.override_placing,
+
       hcp_strokes,
-      net_strokes: isTeam || isFinal ? null : net,
+      net_strokes: isFinal ? null : net,
       adjusted_score: isFinal ? adjusted : null,
+
       placering: null as number | null,
       poang: 0,
+      disqualified: false,
+
+      // team fields are irrelevant here but keep schema safe
+      lag_nr: e.lag_nr ?? null,
+      lag_score: e.lag_score ?? null,
     };
   });
 
-  // Placement & points
-  if (isTeam) {
-    const teamMap = new Map<number, { lag_score: number; members: any[] }>();
-
-    for (const r of rows) {
-      if (r.did_not_play) continue;
-      const nr = r.lag_nr ?? 0;
-      const score = r.lag_score ?? null;
-      if (!nr || score == null) continue;
-
-      if (!teamMap.has(nr)) teamMap.set(nr, { lag_score: score, members: [] });
-      teamMap.get(nr)!.members.push(r);
-      teamMap.get(nr)!.lag_score = score;
-    }
-
-    const sorted = Array.from(teamMap.entries())
-      .map(([lag_nr, v]) => ({ lag_nr, lag_score: v.lag_score, members: v.members }))
-      .sort((a, b) => {
-        if (a.lag_score !== b.lag_score) return a.lag_score - b.lag_score;
-        const minA = Math.min(...a.members.map((m: any) => m.override_placing ?? 999));
-        const minB = Math.min(...b.members.map((m: any) => m.override_placing ?? 999));
-        return minA - minB;
-      });
-
-    for (let i = 0; i < sorted.length; i++) {
-      const placing = i + 1;
-      const pts = ptsMap.get(placing) ?? fallbackPoints(eventType, placing);
-      for (const m of sorted[i].members) {
-        m.placering = placing;
-        m.poang = pts;
-      }
-    }
-  } else if (isFinal) {
+  // Calculate placings/points
+  if (isFinal) {
     const playable = rows
       .filter((r) => !r.did_not_play && r.adjusted_score != null)
-      .sort((a, b) => {
-        const da = Number(a.adjusted_score);
-        const db = Number(b.adjusted_score);
-        if (da !== db) return da - db;
-        const oa = a.override_placing ?? 999;
-        const ob = b.override_placing ?? 999;
-        return oa - ob;
-      });
+      .sort((a, b) => Number(a.adjusted_score) - Number(b.adjusted_score) || (a.override_placing ?? 999) - (b.override_placing ?? 999));
 
-    for (let i = 0; i < playable.length; i++) {
-      const placing = i + 1;
-      playable[i].placering = placing;
-      playable[i].poang = ptsMap.get(placing) ?? fallbackPoints(eventType, placing);
-    }
+    assignPlacingsByScore(playable as any, (r: any) => Number(r.adjusted_score), pointsFor);
   } else {
     const playable = rows
       .filter((r) => !r.did_not_play && r.net_strokes != null)
-      .sort((a, b) => {
-        const na = Number(a.net_strokes);
-        const nb = Number(b.net_strokes);
-        if (na !== nb) return na - nb;
-        const oa = a.override_placing ?? 999;
-        const ob = b.override_placing ?? 999;
-        return oa - ob;
-      });
+      .sort((a, b) => Number(a.net_strokes) - Number(b.net_strokes) || (a.override_placing ?? 999) - (b.override_placing ?? 999));
 
-    for (let i = 0; i < playable.length; i++) {
-      const placing = i + 1;
-      playable[i].placering = placing;
-      playable[i].poang = ptsMap.get(placing) ?? fallbackPoints(eventType, placing);
-    }
+    assignPlacingsByScore(playable as any, (r: any) => Number(r.net_strokes), pointsFor);
   }
 
-  // Save results
+  // Persist
   const up = await sb.from("results").upsert(rows, { onConflict: "event_id,season_player_id" });
   if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 });
 
-  // Lock
+  // Lock if requested
   if (lock) {
     const l = await sb.from("events").update({ locked: true }).eq("id", eventId);
     if (l.error) return NextResponse.json({ error: l.error.message }, { status: 500 });

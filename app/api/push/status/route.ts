@@ -5,18 +5,11 @@ import { supabaseServer } from "@/lib/supabase";
 
 export async function GET(req: Request) {
   const sb = supabaseServer();
-
-  // vi identifierar subscription via endpoint i query
   const url = new URL(req.url);
   const endpoint = url.searchParams.get("endpoint") || "";
 
   if (!endpoint) {
-    return NextResponse.json({
-      ok: true,
-      subscribed: false,
-      notify_results: true,
-      notify_leader: true,
-    });
+    return NextResponse.json({ ok: true, subscribed: false, notify_results: true, notify_leader: true });
   }
 
   const { data, error } = await sb

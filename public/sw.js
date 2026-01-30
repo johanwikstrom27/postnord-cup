@@ -2,7 +2,7 @@ self.addEventListener("push", (event) => {
   let data = {};
   try {
     data = event.data ? event.data.json() : {};
-  } catch (e) {}
+  } catch {}
 
   const title = data.title || "PostNord Cup";
   const body = data.body || "";
@@ -11,7 +11,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: "/icons/pncuplogga-v4.png", // eller din app-ikon
+      icon: "/icons/pncuplogga-v4.png",
       badge: "/icons/pncuplogga-v4.png",
       data: { url },
     })
@@ -26,11 +26,9 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const allClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const c of allClients) {
-        if (c.url.includes(self.location.origin)) {
-          c.focus();
-          c.postMessage({ type: "OPEN_URL", url });
-          return;
-        }
+        c.focus();
+        c.postMessage({ type: "OPEN_URL", url });
+        return;
       }
       await clients.openWindow(url);
     })()

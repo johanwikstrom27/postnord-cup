@@ -187,7 +187,14 @@ export default function NotificationBell() {
       {open ? (
         <div
           ref={dropRef}
-          className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-white/10 bg-[#0b1220] shadow-2xl p-4 z-50"
+          className={[
+            // ✅ CENTERED under icon
+            "absolute left-1/2 top-full mt-2 -translate-x-1/2",
+            // style
+            "w-[340px] rounded-2xl border border-white/10 bg-[#0b1220] shadow-2xl p-4 z-50",
+            // tiny motion feel
+            "origin-top",
+          ].join(" ")}
         >
           <div className="flex items-start justify-between gap-3">
             <div>

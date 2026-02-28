@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 import { sendToSubscribers } from "@/lib/push";
+import { areNotificationsPaused } from "@/lib/notificationPause";
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -88,6 +89,10 @@ export async function POST(req: Request) {
   if (!secret || got !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const sb = supabaseServer();
+  if (await areNotificationsPaused(sb)) {
+    return NextResponse.json({ ok: true, skipped: "notifications_paused" });
+  }
+
   const body = await req.json().catch(() => ({}));
   const eventId = String(body?.event_id ?? "");
   if (!eventId) return NextResponse.json({ error: "Missing event_id" }, { status: 400 });

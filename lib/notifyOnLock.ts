@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase";
 import { sendToSubscribers } from "@/lib/push";
+import { areNotificationsPaused } from "@/lib/notificationPause";
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -81,6 +82,7 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
 
 export async function notifyOnEventLocked(eventId: string) {
   const sb = supabaseServer();
+  if (await areNotificationsPaused(sb)) return;
 
   const ev = await sb
     .from("events")

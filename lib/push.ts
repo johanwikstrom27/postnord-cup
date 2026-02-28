@@ -1,5 +1,6 @@
 import * as webpush from "web-push";
 import { supabaseServer } from "@/lib/supabase";
+import { areNotificationsPaused } from "@/lib/notificationPause";
 
 type PushType = "results" | "leader";
 
@@ -31,8 +32,10 @@ function setupWebPush() {
 }
 
 export async function sendToSubscribers(type: PushType, payload: Payload) {
-  setupWebPush();
   const sb = supabaseServer();
+  if (await areNotificationsPaused(sb)) return;
+
+  setupWebPush();
 
   const col = type === "results" ? "notify_results" : "notify_leader";
 

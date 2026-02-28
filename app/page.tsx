@@ -460,6 +460,7 @@ export default async function Page() {
             <div key={r.person_id} className="flex items-center justify-between border-b border-white/10 px-4 py-3 last:border-b-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-8 text-white/60">{idx + 1}</div>
+                <AvatarRound url={r.avatar_url} name={r.name} size={34} />
                 <Link href={`/players/${r.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">
                   {r.name}
                 </Link>

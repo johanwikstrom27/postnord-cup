@@ -384,7 +384,7 @@ export default function SpinTheWheelClient({ players }: Props) {
       <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Spin the Wheel</h1>
+            <h1 className="text-2xl font-semibold">SpinThePostbil</h1>
             <div className="text-sm text-white/60">Lotta spelare till simulatorer och lag</div>
           </div>
 

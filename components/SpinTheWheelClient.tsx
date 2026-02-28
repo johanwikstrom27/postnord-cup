@@ -393,7 +393,7 @@ export default function SpinTheWheelClient({ players }: Props) {
           <div>
             <div className="flex items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/truck-pointer.png" alt="" className="h-10 w-10 -rotate-90 object-contain" />
+              <img src="/icons/truck-pointer.png" alt="" className="h-20 w-20 -rotate-90 object-contain shrink-0" />
               <h1 className="text-2xl font-semibold">SpinThePostbil</h1>
             </div>
           </div>
@@ -502,17 +502,13 @@ export default function SpinTheWheelClient({ players }: Props) {
           <div className="relative w-full flex items-center justify-center">
             <div className="relative" style={{ width: "min(92vw, 620px)", height: "min(92vw, 620px)" }}>
               {/* Truck pointer */}
-              <div className="absolute left-1/2 -top-8 -translate-x-1/2 z-20">
+              <div className="absolute left-1/2 -top-1 -translate-x-1/2 z-20">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/icons/truck-pointer.png"
                   alt="Pointer"
                   className="h-20 w-20 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.55)]"
                 />
-              </div>
-              {/* Exact pointer tip used by selection logic */}
-              <div className="absolute left-1/2 top-[10px] -translate-x-1/2 z-30">
-                <div className="h-0 w-0 border-l-[11px] border-r-[11px] border-t-[18px] border-l-transparent border-r-transparent border-t-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]" />
               </div>
 
               <div

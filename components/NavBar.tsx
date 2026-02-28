@@ -102,7 +102,17 @@ export default function NavBar() {
                 aria-label="Öppna meny"
               >
                 <span className="hidden sm:inline whitespace-nowrap">{activeLabel}</span>
-                <span className="text-base leading-none">{open ? "✕" : "☰"}</span>
+                <span className="inline-flex h-5 w-5 items-center justify-center" aria-hidden>
+                  {open ? (
+                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 6h12M4 10h12M4 14h12" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </span>
               </button>
 
               {open && (

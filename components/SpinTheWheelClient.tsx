@@ -42,11 +42,6 @@ function normDeg(d: number) {
   return x;
 }
 
-function labelShort(name: string) {
-  const max = 14;
-  return name.length > max ? name.slice(0, max - 1) + "…" : name;
-}
-
 function avatarSeed(name: string) {
   // simple stable seed for "fake avatar" circle
   let h = 0;
@@ -54,10 +49,14 @@ function avatarSeed(name: string) {
   return Math.abs(h);
 }
 
-function firstName(name: string) {
+function wheelLabelName(name: string) {
   const s = String(name ?? "").trim();
   if (!s) return "Okänd";
-  return s.split(/\s+/)[0] ?? s;
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  const initial = (parts[parts.length - 1]?.[0] ?? "").toUpperCase();
+  const short = initial ? `${parts[0]} ${initial}` : parts[0];
+  return short.length > 16 ? short.slice(0, 15) + "…" : short;
 }
 
 export default function SpinTheWheelClient({ players }: Props) {
@@ -86,6 +85,7 @@ export default function SpinTheWheelClient({ players }: Props) {
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0); // degrees (CSS rotate) where positive rotates clockwise
   const [landed, setLanded] = useState<Player | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // results state
   // singles: each sim has up to 4 players
@@ -383,7 +383,7 @@ export default function SpinTheWheelClient({ players }: Props) {
 
   const poolCount = pool.length;
   const selectedCount = selectedPlayers.length;
-  const wheelLabelSize = poolCount >= 12 ? 14 : poolCount >= 10 ? 15 : 16;
+  const wheelLabelSize = poolCount >= 12 ? 17 : poolCount >= 10 ? 18 : 20;
 
   return (
     <div className="space-y-6">
@@ -391,15 +391,19 @@ export default function SpinTheWheelClient({ players }: Props) {
       <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">SpinThePostbil</h1>
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/icons/truck-pointer.png" alt="" className="h-7 w-7 object-contain" />
+              <h1 className="text-2xl font-semibold">SpinThePostbil</h1>
+            </div>
             <div className="text-sm text-white/60">Lotta spelare till simulatorer och lag</div>
           </div>
 
-          <div className="inline-flex rounded-2xl border border-white/10 bg-black/20 p-1">
+          <div className="grid w-full max-w-[420px] grid-cols-2 rounded-2xl border border-white/10 bg-black/20 p-1">
             <button
               onClick={() => setTab("singles")}
               className={[
-                "px-4 py-2 rounded-2xl text-sm font-semibold transition",
+                "flex w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition",
                 tab === "singles" ? "bg-white/10 text-white" : "text-white/70 hover:text-white",
               ].join(" ")}
             >
@@ -408,7 +412,7 @@ export default function SpinTheWheelClient({ players }: Props) {
             <button
               onClick={() => setTab("teams")}
               className={[
-                "px-4 py-2 rounded-2xl text-sm font-semibold transition",
+                "flex w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition",
                 tab === "teams" ? "bg-white/10 text-white" : "text-white/70 hover:text-white",
               ].join(" ")}
             >
@@ -418,152 +422,226 @@ export default function SpinTheWheelClient({ players }: Props) {
         </div>
       </section>
 
-      {/* Main layout */}
-      <section className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Wheel card */}
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 overflow-hidden">
-          <div className="flex flex-col items-center gap-4">
-            {/* Wheel wrapper */}
-            <div className="relative w-full flex items-center justify-center">
-              <div className="relative" style={{ width: "min(92vw, 620px)", height: "min(92vw, 620px)" }}>
-                {/* Truck pointer (bigger) */}
-                <div className="absolute left-1/2 -top-5 -translate-x-1/2 z-20">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/icons/truck-pointer.png"
-                    alt="Pointer"
-                    className="h-16 w-16 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.55)]"
-                  />
-                </div>
-                {/* Exact pointer tip used by selection logic */}
-                <div className="absolute left-1/2 top-[30px] -translate-x-1/2 z-30">
-                  <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[14px] border-l-transparent border-r-transparent border-t-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]" />
-                </div>
-
-                {/* Wheel */}
-                <div
-                  className="absolute inset-0 flex items-center justify-center"
-                  style={{
-                    transform: `rotate(${rotation}deg)`,
-                    transition: spinning ? "none" : "transform 120ms linear",
-                  }}
-                >
-                  <svg
-                    viewBox={`${-wheelSize / 2} ${-wheelSize / 2} ${wheelSize} ${wheelSize}`}
-                    className="h-full w-full"
-                  >
-                    {/* outer rim */}
-                    <circle r={rOuter + 8} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
-                    <circle r={rOuter} fill="rgba(0,0,0,0.20)" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
-
-                    {poolCount > 0 ? (
-                      <>
-                        {pool.map((p, i) => {
-                          const dark = i % 2 === 0;
-                          const d = slicePath(i, poolCount);
-                          const { mid, radius } = labelTransform(i, poolCount);
-                          const text = labelShort(p.name);
-
-                          return (
-                            <g key={p.season_player_id}>
-                              <path
-                                d={d}
-                                fill={dark ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.09)"}
-                                stroke="rgba(255,255,255,0.05)"
-                                strokeWidth="1"
-                              />
-                              <g transform={`rotate(${mid}) translate(0 ${-radius})`}>
-                                <text
-                                  textAnchor="middle"
-                                  dominantBaseline="middle"
-                                  fill="rgba(255,255,255,0.85)"
-                                  fontSize={wheelLabelSize}
-                                  fontWeight="600"
-                                  style={{ userSelect: "none" }}
-                                  transform="rotate(90)"
-                                >
-                                  {text}
-                                </text>
-                              </g>
-                            </g>
-                          );
-                        })}
-                      </>
-                    ) : null}
-
-                    {/* inner hub */}
-                    <circle r={rInner + 6} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
-                    <circle r={rInner} fill="rgba(0,0,0,0.25)" />
-
-                    {/* center logo */}
-                    <g>
-                      <circle r={52} fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
-                      <foreignObject x={-42} y={-42} width={84} height={84}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src="/icons/pncuplogga-v4.png"
-                          alt="PostNord Cup"
-                          style={{ width: "84px", height: "84px", objectFit: "contain" }}
-                        />
-                      </foreignObject>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Spin button */}
-            <button
-              onClick={spinOnce}
-              disabled={!canSpin}
-              className="relative overflow-hidden rounded-2xl px-8 py-3 text-sm font-semibold
-                bg-gradient-to-br from-emerald-500/90 to-emerald-600 text-white
-                shadow-lg shadow-emerald-900/30 hover:from-emerald-400 hover:to-emerald-600
-                disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {spinning ? "Snurrar…" : "Snurra"}
-              <span className="absolute inset-0 rounded-2xl ring-1 ring-white/15" />
-            </button>
-          </div>
+      {/* Config + participants */}
+      <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-white/70">🎯 Pool: {poolCount}</div>
+          <div className="text-sm text-white/70">✅ Valda: {selectedCount}</div>
         </div>
 
-        {/* Side panel */}
-        <aside className="space-y-6">
-          {/* Landed */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div className="text-sm text-white/60 mb-1">Vald spelare</div>
-            {landed ? (
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-black/30 shrink-0"
-                  title={landed.name}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={markAll}
+            className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/15"
+          >
+            Markera alla
+          </button>
+          <button
+            onClick={clearAll}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold hover:bg-white/10"
+          >
+            Rensa
+          </button>
+          <button
+            onClick={() => setPickerOpen(true)}
+            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold hover:bg-black/40"
+          >
+            Deltagare ({selectedCount})
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {tab === "singles" ? (
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-sm text-white/70">🖥️ Simulatorer</span>
+              <select
+                value={simCount}
+                onChange={(e) => setSimCount(Number(e.target.value))}
+                className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              >
+                <option value={2}>2 sim</option>
+                <option value={3}>3 sim</option>
+              </select>
+            </label>
+          ) : (
+            <>
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm text-white/70">🖥️ Simulatorer</span>
+                <select
+                  value={teamSimCount}
+                  onChange={(e) => setTeamSimCount(Number(e.target.value))}
+                  className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
                 >
-                  {landed.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={landed.avatar_url} alt={landed.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-white/80">
-                      {String(avatarSeed(landed.name)).slice(0, 2)}
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xl font-semibold truncate">{firstName(landed.name)}</div>
-                  <div className="text-sm text-white/60">Tilldelad automatiskt ✅</div>
-                </div>
+                  <option value={2}>2 sim</option>
+                  <option value={3}>3 sim</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm text-white/70">👥 Antal lag</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={12}
+                  value={teamCount}
+                  onChange={(e) => setTeamCount(clamp(Number(e.target.value || 2), 2, 12))}
+                  className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-right"
+                />
+              </label>
+
+              <div className="text-xs text-white/50">
+                Lagtävling: max 2 pers/lag, max 4 pers/sim (2 lag per sim).
               </div>
-            ) : (
-              <div className="text-white/60">Snurra för att välja nästa.</div>
-            )}
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Wheel */}
+      <section className="rounded-3xl border border-white/10 bg-white/5 p-5 overflow-hidden">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-full flex items-center justify-center">
+            <div className="relative" style={{ width: "min(92vw, 620px)", height: "min(92vw, 620px)" }}>
+              {/* Truck pointer */}
+              <div className="absolute left-1/2 -top-5 -translate-x-1/2 z-20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icons/truck-pointer.png"
+                  alt="Pointer"
+                  className="h-16 w-16 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.55)]"
+                />
+              </div>
+              {/* Exact pointer tip used by selection logic */}
+              <div className="absolute left-1/2 top-[30px] -translate-x-1/2 z-30">
+                <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[14px] border-l-transparent border-r-transparent border-t-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]" />
+              </div>
+
+              <div
+                className="absolute inset-0 flex items-center justify-center"
+                style={{
+                  transform: `rotate(${rotation}deg)`,
+                  transition: spinning ? "none" : "transform 120ms linear",
+                }}
+              >
+                <svg
+                  viewBox={`${-wheelSize / 2} ${-wheelSize / 2} ${wheelSize} ${wheelSize}`}
+                  className="h-full w-full"
+                >
+                  <circle r={rOuter + 8} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
+                  <circle r={rOuter} fill="rgba(0,0,0,0.20)" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+
+                  {poolCount > 0 ? (
+                    <>
+                      {pool.map((p, i) => {
+                        const dark = i % 2 === 0;
+                        const d = slicePath(i, poolCount);
+                        const { mid, radius } = labelTransform(i, poolCount);
+                        const text = wheelLabelName(p.name);
+
+                        return (
+                          <g key={p.season_player_id}>
+                            <path
+                              d={d}
+                              fill={dark ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.09)"}
+                              stroke="rgba(255,255,255,0.05)"
+                              strokeWidth="1"
+                            />
+                            <g transform={`rotate(${mid}) translate(0 ${-radius})`}>
+                              <text
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                fill="rgba(255,255,255,0.85)"
+                                fontSize={wheelLabelSize}
+                                fontWeight="600"
+                                style={{ userSelect: "none" }}
+                                transform="rotate(90)"
+                              >
+                                {text}
+                              </text>
+                            </g>
+                          </g>
+                        );
+                      })}
+                    </>
+                  ) : null}
+
+                  <circle r={rInner + 6} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
+                  <circle r={rInner} fill="rgba(0,0,0,0.25)" />
+
+                  <g>
+                    <circle r={52} fill="rgba(0,0,0,0.25)" stroke="rgba(255,255,255,0.10)" strokeWidth="2" />
+                    <foreignObject x={-42} y={-42} width={84} height={84}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/icons/pncuplogga-v4.png"
+                        alt="PostNord Cup"
+                        style={{ width: "84px", height: "84px", objectFit: "contain" }}
+                      />
+                    </foreignObject>
+                  </g>
+                </svg>
+              </div>
+            </div>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-white/70">🎯 Pool: {poolCount}</div>
-              <div className="text-sm text-white/70">✅ Valda: {selectedCount}</div>
-            </div>
+          <button
+            onClick={spinOnce}
+            disabled={!canSpin}
+            className="relative overflow-hidden rounded-2xl px-8 py-3 text-sm font-semibold
+              bg-gradient-to-br from-emerald-500/90 to-emerald-600 text-white
+              shadow-lg shadow-emerald-900/30 hover:from-emerald-400 hover:to-emerald-600
+              disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {spinning ? "Snurrar…" : "Snurra"}
+            <span className="absolute inset-0 rounded-2xl ring-1 ring-white/15" />
+          </button>
+        </div>
+      </section>
 
-            <div className="mt-4 flex items-center gap-2">
+      {/* Selected player */}
+      <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+        <div className="text-sm text-white/60 mb-1">Vald spelare</div>
+        {landed ? (
+          <div className="flex items-center gap-3">
+            <div
+              className="h-14 w-14 overflow-hidden rounded-2xl border border-white/10 bg-black/30 shrink-0"
+              title={landed.name}
+            >
+              {landed.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={landed.avatar_url} alt={landed.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-white/80">
+                  {String(avatarSeed(landed.name)).slice(0, 2)}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="text-2xl font-semibold truncate">{landed.name}</div>
+              <div className="text-sm text-white/60">Tilldelad automatiskt ✅</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-white/60">Snurra för att välja nästa.</div>
+        )}
+      </section>
+
+      {pickerOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <button className="absolute inset-0 bg-black/60" onClick={() => setPickerOpen(false)} aria-label="Stäng" />
+          <div className="relative w-full max-w-xl rounded-2xl border border-white/10 bg-[#0b1220] p-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">Välj deltagare</div>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-sm hover:bg-white/10"
+              >
+                Stäng
+              </button>
+            </div>
+            <div className="mt-2 text-sm text-white/60">{selectedCount} valda</div>
+
+            <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={markAll}
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/15"
@@ -578,55 +656,44 @@ export default function SpinTheWheelClient({ players }: Props) {
               </button>
             </div>
 
-            {/* Config */}
-            <div className="mt-5 space-y-3">
-              {tab === "singles" ? (
-                <label className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-white/70">🖥️ Simulatorer</span>
-                  <select
-                    value={simCount}
-                    onChange={(e) => setSimCount(Number(e.target.value))}
-                    className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            <div className="mt-4 max-h-[55vh] space-y-2 overflow-auto pr-1">
+              {players.map((p) => {
+                const checked = !!selected[p.season_player_id];
+                return (
+                  <label
+                    key={p.season_player_id}
+                    className={[
+                      "flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 cursor-pointer select-none",
+                      checked
+                        ? "border-emerald-400/25 bg-emerald-400/5"
+                        : "border-white/10 bg-black/20 hover:bg-black/25",
+                    ].join(" ")}
                   >
-                    <option value={2}>2 sim</option>
-                    <option value={3}>3 sim</option>
-                  </select>
-                </label>
-              ) : (
-                <>
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-white/70">🖥️ Simulatorer</span>
-                    <select
-                      value={teamSimCount}
-                      onChange={(e) => setTeamSimCount(Number(e.target.value))}
-                      className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    >
-                      <option value={2}>2 sim</option>
-                      <option value={3}>3 sim</option>
-                    </select>
-                  </label>
-
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-white/70">👥 Antal lag</span>
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="h-10 w-10 overflow-hidden rounded-xl border border-white/10 bg-black/30 shrink-0">
+                        {p.avatar_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.avatar_url} alt={p.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-white/80">
+                            {String(avatarSeed(p.name)).slice(0, 2)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-medium truncate">{p.name}</span>
+                    </span>
                     <input
-                      type="number"
-                      min={2}
-                      max={12}
-                      value={teamCount}
-                      onChange={(e) => setTeamCount(clamp(Number(e.target.value || 2), 2, 12))}
-                      className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-right"
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePlayer(p.season_player_id)}
                     />
                   </label>
-
-                  <div className="text-xs text-white/50">
-                    Lagtävling: max 2 pers/lag, max 4 pers/sim (2 lag per sim).
-                  </div>
-                </>
-              )}
+                );
+              })}
             </div>
           </div>
-        </aside>
-      </section>
+        </div>
+      )}
 
       {/* Results */}
       <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
@@ -733,33 +800,6 @@ export default function SpinTheWheelClient({ players }: Props) {
         )}
       </section>
 
-      {/* Player picker */}
-      <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
-        <div className="text-lg font-semibold mb-4">Deltagare</div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {players.map((p) => {
-            const checked = !!selected[p.season_player_id];
-            return (
-              <label
-                key={p.season_player_id}
-                className={[
-                  "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 cursor-pointer select-none",
-                  checked ? "border-emerald-400/25 bg-emerald-400/5" : "border-white/10 bg-black/20 hover:bg-black/25",
-                ].join(" ")}
-              >
-                <span className="min-w-0">
-                  <span className="font-semibold truncate block">{p.name}</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => togglePlayer(p.season_player_id)}
-                />
-              </label>
-            );
-          })}
-        </div>
-      </section>
     </div>
   );
 }

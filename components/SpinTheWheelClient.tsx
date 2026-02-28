@@ -111,7 +111,7 @@ export default function SpinTheWheelClient({ players }: Props) {
     setSims(simCount === 2 ? [[], []] : [[], [], []]);
 
     // teams
-    const tc = clamp(teamCount, 2, 12);
+    const tc = clamp(teamCount, 2, 6);
     setTeamCount(tc);
     setTeams(Array.from({ length: tc }, () => []));
     const sc = clamp(teamSimCount, 2, 3);
@@ -136,7 +136,7 @@ export default function SpinTheWheelClient({ players }: Props) {
         while (base.length < sc) base.push([[], []]);
         return base.map((sim) => [sim?.[0] ?? [], sim?.[1] ?? []]);
       });
-      const tc = clamp(teamCount, 2, 12);
+      const tc = clamp(teamCount, 2, 6);
       setTeamCount(tc);
       setTeams((prev) => {
         const base = prev.slice(0, tc);
@@ -392,8 +392,14 @@ export default function SpinTheWheelClient({ players }: Props) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/truck-pointer.png" alt="" className="h-20 w-20 -rotate-90 object-contain shrink-0" />
+              <span className="relative h-20 w-20 shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icons/truck-pointer.png"
+                  alt=""
+                  className="absolute inset-0 h-full w-full -rotate-90 scale-200 object-contain"
+                />
+              </span>
               <h1 className="text-2xl font-semibold">SpinThePostbil</h1>
             </div>
           </div>
@@ -478,14 +484,17 @@ export default function SpinTheWheelClient({ players }: Props) {
 
               <label className="flex items-center justify-between gap-3">
                 <span className="text-sm text-white/70">👥 Antal lag</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={12}
+                <select
                   value={teamCount}
-                  onChange={(e) => setTeamCount(clamp(Number(e.target.value || 2), 2, 12))}
-                  className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-right"
-                />
+                  onChange={(e) => setTeamCount(Number(e.target.value))}
+                  className="w-28 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                >
+                  <option value={2}>2 lag</option>
+                  <option value={3}>3 lag</option>
+                  <option value={4}>4 lag</option>
+                  <option value={5}>5 lag</option>
+                  <option value={6}>6 lag</option>
+                </select>
               </label>
 
               <div className="text-xs text-white/50">

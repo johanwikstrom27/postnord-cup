@@ -318,13 +318,18 @@ export default async function EventDetailPage({
   const prelim = isFinal && !event.locked ? await computePrelimFinalStartlist(sb, event.season_id, rules) : [];
 
   // Individual results sorted
-  let individualSorted = results.filter((r) => !r.did_not_play).slice();
+  const individualSorted = results.filter((r) => !r.did_not_play).slice();
 
   if (isFinal) {
     individualSorted.sort((a, b) => {
+      const pa = Number(a.placering ?? 999999);
+      const pb = Number(b.placering ?? 999999);
+      if (pa !== pb) return pa - pb;
+
       const da = Number(a.adjusted_score ?? 999999);
       const db = Number(b.adjusted_score ?? 999999);
       if (da !== db) return da - db;
+
       const na = a.season_players?.people?.name ?? "";
       const nb = b.season_players?.people?.name ?? "";
       return na.localeCompare(nb);
@@ -482,7 +487,7 @@ export default async function EventDetailPage({
                   const name = r.season_players?.people?.name ?? "Okänd";
                   const personId = r.season_players?.person_id ?? "";
 
-                  const pl = sharedPlacingMap.get(r.season_player_id) ?? r.placering ?? "—";
+                  const pl = r.placering ?? sharedPlacingMap.get(r.season_player_id) ?? "—";
                   const netto = r.adjusted_score ?? null;
 
                   // ✅ ENDA LOGIKÄNDRINGEN: Start inkl PN-HCP (0/2/4)

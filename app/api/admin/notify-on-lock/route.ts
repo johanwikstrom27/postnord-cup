@@ -120,12 +120,15 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .slice(0, event.event_type === "LAGTÄVLING" ? 2 : 1) as string[];
 
-  const winnerText = names.length >= 2 ? `${names[0]} & ${names[1]}` : names[0] ?? "Vinnare";
+  const winnerText = names.length >= 2 ? `${names[0]} & ${names[1]}` : names[0] ?? null;
   const course = event.course ?? event.name;
   const format = typeLabel(String(event.event_type));
+  const title = winnerText
+    ? `🥇 ${winnerText} vinner på ${course} – ${format}`
+    : `🥇 Resultat klara på ${course} – ${format}`;
 
   await sendToSubscribers("results", {
-    title: `🥇 ${winnerText} vinner på ${course} – ${format}`,
+    title,
     body: "Resultat publicerat i appen",
     url: eventUrl,
   });

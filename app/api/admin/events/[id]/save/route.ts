@@ -46,6 +46,14 @@ type Entry = {
   lag_score: number | null;
 };
 
+type TeamRankRow = {
+  lag_nr: number;
+  score: number;
+  override_placing: number | null;
+  placering: number | null;
+  poang: number;
+};
+
 function safeInt(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
@@ -55,6 +63,11 @@ function pickOverride(x: any): number | null {
   // stöd flera nycklar från klienten
   const v = x?.override_placing ?? x?.placering_override ?? x?.placing_override ?? null;
   return v === "" || v == null ? null : safeInt(v);
+}
+
+function validOverride(v: number | null): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  return v > 0 ? Math.trunc(v) : null;
 }
 
 async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: boolean; unlock?: boolean }> {
@@ -301,6 +314,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   const seasonId = String(event.season_id);
   const eventType = String(event.event_type);
   const isFinal = eventType === "FINAL";
+  const isTeam = eventType === "LAGTÄVLING";
 
   // Unlock
   if (unlock) {
@@ -389,7 +403,111 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
           (a.override_placing ?? 999) - (b.override_placing ?? 999)
       );
 
-    assignPlacingsByScore(playable as any, (r: any) => Number(r.adjusted_score), pointsFor);
+    // Finalen avgörs på adjusted score (+ särspel), aldrig på poängtabell.
+    assignPlacingsByScore(playable as any, (r: any) => Number(r.adjusted_score), () => 0);
+  } else if (isTeam) {
+    const byTeam = new Map<number, typeof rows>();
+
+    for (const r of rows) {
+      // Lagresultat gäller endast spelare som faktiskt spelat.
+      if (r.did_not_play) {
+        r.placering = null;
+        r.poang = 0;
+        r.gross_strokes = null;
+        r.net_strokes = null;
+        r.adjusted_score = null;
+        r.hcp_strokes = 0;
+        continue;
+      }
+
+      if (!r.lag_nr) {
+        r.placering = null;
+        r.poang = 0;
+        r.gross_strokes = null;
+        r.net_strokes = null;
+        r.adjusted_score = null;
+        r.hcp_strokes = 0;
+        continue;
+      }
+
+      const arr = byTeam.get(r.lag_nr) ?? [];
+      arr.push(r);
+      byTeam.set(r.lag_nr, arr);
+    }
+
+    const teamRows: TeamRankRow[] = [];
+    for (const [lagNr, members] of byTeam) {
+      const scores = members
+        .map((m) => (m.lag_score == null ? null : Number(m.lag_score)))
+        .filter((n): n is number => n != null && Number.isFinite(n));
+
+      if (!scores.length) {
+        return NextResponse.json({ error: `Lag ${lagNr}: fyll i lagets bruttoslag.` }, { status: 400 });
+      }
+
+      const baseScore = scores[0];
+      const allSame = scores.every((s) => s === baseScore);
+      if (!allSame) {
+        return NextResponse.json({ error: `Lag ${lagNr}: olika lagbrutto på lagmedlemmar.` }, { status: 400 });
+      }
+
+      const overrides = members
+        .map((m) => validOverride(m.override_placing))
+        .filter((v): v is number => v != null);
+
+      const uniqueOverrides = Array.from(new Set(overrides));
+      if (uniqueOverrides.length > 1) {
+        return NextResponse.json(
+          { error: `Lag ${lagNr}: olika särspel placering angiven på lagmedlemmar.` },
+          { status: 400 }
+        );
+      }
+
+      teamRows.push({
+        lag_nr: lagNr,
+        score: baseScore,
+        override_placing: uniqueOverrides[0] ?? null,
+        placering: null,
+        poang: 0,
+      });
+    }
+
+    const rankedTeams = teamRows
+      .slice()
+      .sort((a, b) => a.score - b.score || (a.override_placing ?? 999) - (b.override_placing ?? 999));
+
+    assignPlacingsByScore(
+      rankedTeams,
+      (t) => t.score,
+      (placing) => pointsFor(placing)
+    );
+
+    const placementByTeam = new Map<number, number>();
+    const pointsByTeam = new Map<number, number>();
+    for (const t of rankedTeams) {
+      if (t.placering != null) placementByTeam.set(t.lag_nr, t.placering);
+      pointsByTeam.set(t.lag_nr, Number(t.poang ?? 0));
+    }
+
+    for (const r of rows) {
+      // Lagtävling använder endast lag-score.
+      r.gross_strokes = null;
+      r.net_strokes = null;
+      r.adjusted_score = null;
+      r.hcp_strokes = 0;
+
+      if (r.did_not_play || !r.lag_nr) {
+        r.placering = null;
+        r.poang = 0;
+        continue;
+      }
+
+      const teamMembers = byTeam.get(r.lag_nr) ?? [];
+      const score = teamMembers.find((m) => m.lag_score != null)?.lag_score ?? null;
+      r.lag_score = score;
+      r.placering = placementByTeam.get(r.lag_nr) ?? null;
+      r.poang = pointsByTeam.get(r.lag_nr) ?? 0;
+    }
   } else {
     const playable = rows
       .filter((r) => !r.did_not_play && r.net_strokes != null)

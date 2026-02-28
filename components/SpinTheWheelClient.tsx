@@ -42,7 +42,7 @@ function normDeg(d: number) {
 }
 
 function labelShort(name: string) {
-  const max = 16;
+  const max = 14;
   return name.length > max ? name.slice(0, max - 1) + "…" : name;
 }
 
@@ -71,7 +71,7 @@ export default function SpinTheWheelClient({ players }: Props) {
 
   // config
   const [simCount, setSimCount] = useState(3); // singles sims
-  const [teamSimCount, setTeamSimCount] = useState(2); // teams sims
+  const [teamSimCount, setTeamSimCount] = useState(3); // teams sims
   const [teamCount, setTeamCount] = useState(6); // number of teams
 
   // state for wheel
@@ -115,7 +115,7 @@ export default function SpinTheWheelClient({ players }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, selectedPlayers.length]);
 
-  // keep within sane
+  // keep within sane and react immediately to simulator/team count changes
   useEffect(() => {
     if (tab === "singles") {
       const sc = clamp(simCount, 2, 3);
@@ -137,8 +137,7 @@ export default function SpinTheWheelClient({ players }: Props) {
         return base;
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, simCount, teamSimCount, teamCount]);
 
   function markAll() {
     const o: Record<string, boolean> = {};
@@ -256,7 +255,7 @@ export default function SpinTheWheelClient({ players }: Props) {
     const targetRot = computeTargetRotationDeg(targetIndex, n, startRot, POINTER_DEG);
 
     // animate (slower)
-    const durationMs = 2400; // slower than before
+    const durationMs = 3200; // slower than before
     const start = performance.now();
 
     stopRaf();
@@ -369,7 +368,7 @@ export default function SpinTheWheelClient({ players }: Props) {
     const slice = 360 / n;
     const mid = i * slice + slice / 2; // degrees from up
     // rotate around center, then translate outward
-    const radius = (rInner + rOuter) / 2 + 18;
+    const radius = (rInner + rOuter) / 2 + 8;
     // For readability, keep upright-ish: rotate to mid angle, then rotate text by 90 so it reads along radius
     // We'll rotate group to mid, then translate, then rotate text so baseline is tangent
     return { mid, radius };
@@ -377,6 +376,7 @@ export default function SpinTheWheelClient({ players }: Props) {
 
   const poolCount = pool.length;
   const selectedCount = selectedPlayers.length;
+  const wheelLabelSize = poolCount >= 12 ? 14 : poolCount >= 10 ? 15 : 16;
 
   return (
     <div className="space-y-6">
@@ -470,7 +470,7 @@ export default function SpinTheWheelClient({ players }: Props) {
                                   textAnchor="middle"
                                   dominantBaseline="middle"
                                   fill="rgba(255,255,255,0.85)"
-                                  fontSize="18"
+                                  fontSize={wheelLabelSize}
                                   fontWeight="600"
                                   style={{ userSelect: "none" }}
                                   transform="rotate(90)"

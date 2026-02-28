@@ -57,6 +57,7 @@ type TopRow = {
   gross_strokes: number | null;
   net_strokes: number | null;
   adjusted_score: number | null;
+  lag_score: number | null;
   season_players: {
     person_id: string;
     people: { name: string; avatar_url: string | null } | null;
@@ -349,7 +350,7 @@ export default async function Page() {
   if (lastPlayed) {
     const topResp = await sb
       .from("results")
-      .select("placering,poang,gross_strokes,net_strokes,adjusted_score,season_players(person_id,people(name,avatar_url))")
+      .select("placering,poang,gross_strokes,net_strokes,adjusted_score,lag_score,season_players(person_id,people(name,avatar_url))")
       .eq("event_id", lastPlayed.id)
       .not("placering", "is", null)
       .order("placering", { ascending: true })
@@ -498,7 +499,13 @@ export default async function Page() {
               const medal = medalForPlacing(r.placering);
 
               const strokes =
-                r.adjusted_score != null ? r.adjusted_score : r.net_strokes != null ? r.net_strokes : r.gross_strokes;
+                lastPlayed?.event_type === "LAGTÄVLING"
+                  ? r.lag_score
+                  : r.adjusted_score != null
+                  ? r.adjusted_score
+                  : r.net_strokes != null
+                  ? r.net_strokes
+                  : r.gross_strokes;
 
               const pts = Number(r.poang ?? 0);
 

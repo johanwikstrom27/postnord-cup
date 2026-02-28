@@ -95,13 +95,13 @@ export default function NavBar() {
                 onClick={() => setOpen((v) => !v)}
                 className={[
                   "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/90 hover:bg-white/10 transition",
-                  "max-w-[120px]",
+                  "max-w-[120px] sm:max-w-none sm:min-w-[220px]",
                   open ? "ring-1 ring-blue-400/40" : "",
                 ].join(" ")}
                 aria-expanded={open}
                 aria-label="Öppna meny"
               >
-                <span className="hidden sm:inline truncate">{activeLabel}</span>
+                <span className="hidden sm:inline whitespace-nowrap">{activeLabel}</span>
                 <span className="text-base leading-none">{open ? "✕" : "☰"}</span>
               </button>
 

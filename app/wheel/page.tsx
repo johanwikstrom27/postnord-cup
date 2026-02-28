@@ -8,6 +8,7 @@ import SpinTheWheelClient from "@/components/SpinTheWheelClient";
 type PlayerRow = {
   season_player_id: string;
   name: string;
+  avatar_url: string | null;
 };
 
 export default async function WheelPage() {
@@ -30,13 +31,14 @@ export default async function WheelPage() {
   // players in season
   const spResp = await sb
     .from("season_players")
-    .select("id, people(name)")
+    .select("id, people(name,avatar_url)")
     .eq("season_id", seasonId);
 
   const players: PlayerRow[] =
     (spResp.data ?? []).map((r: any) => ({
       season_player_id: String(r.id),
       name: String(r.people?.name ?? "Okänd"),
+      avatar_url: (r.people?.avatar_url as string | null) ?? null,
     })) ?? [];
 
   // sort for nicer checkbox list

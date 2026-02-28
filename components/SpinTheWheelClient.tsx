@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Player = {
   season_player_id: string;
   name: string;
+  avatar_url: string | null;
 };
 
 type Props = {
@@ -51,6 +52,12 @@ function avatarSeed(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
   return Math.abs(h);
+}
+
+function firstName(name: string) {
+  const s = String(name ?? "").trim();
+  if (!s) return "Okänd";
+  return s.split(/\s+/)[0] ?? s;
 }
 
 export default function SpinTheWheelClient({ players }: Props) {
@@ -420,16 +427,16 @@ export default function SpinTheWheelClient({ players }: Props) {
             <div className="relative w-full flex items-center justify-center">
               <div className="relative" style={{ width: "min(92vw, 620px)", height: "min(92vw, 620px)" }}>
                 {/* Truck pointer (bigger) */}
-                <div className="absolute left-1/2 top-0 -translate-x-1/2 z-20">
+                <div className="absolute left-1/2 -top-5 -translate-x-1/2 z-20">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src="/icons/truck-pointer.png"
                     alt="Pointer"
-                    className="h-20 w-20 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.55)]"
+                    className="h-16 w-16 object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.55)]"
                   />
                 </div>
                 {/* Exact pointer tip used by selection logic */}
-                <div className="absolute left-1/2 top-[72px] -translate-x-1/2 z-30">
+                <div className="absolute left-1/2 top-[30px] -translate-x-1/2 z-30">
                   <div className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[14px] border-l-transparent border-r-transparent border-t-white drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]" />
                 </div>
 
@@ -522,6 +529,34 @@ export default function SpinTheWheelClient({ players }: Props) {
 
         {/* Side panel */}
         <aside className="space-y-6">
+          {/* Landed */}
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div className="text-sm text-white/60 mb-1">Vald spelare</div>
+            {landed ? (
+              <div className="flex items-center gap-3">
+                <div
+                  className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-black/30 shrink-0"
+                  title={landed.name}
+                >
+                  {landed.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={landed.avatar_url} alt={landed.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-white/80">
+                      {String(avatarSeed(landed.name)).slice(0, 2)}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xl font-semibold truncate">{firstName(landed.name)}</div>
+                  <div className="text-sm text-white/60">Tilldelad automatiskt ✅</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-white/60">Snurra för att välja nästa.</div>
+            )}
+          </div>
+
           <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
             <div className="flex items-center justify-between">
               <div className="text-sm text-white/70">🎯 Pool: {poolCount}</div>
@@ -589,27 +624,6 @@ export default function SpinTheWheelClient({ players }: Props) {
                 </>
               )}
             </div>
-          </div>
-
-          {/* Landed */}
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-            <div className="text-sm text-white/60 mb-1">Vald spelare</div>
-            {landed ? (
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-12 w-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center text-white/80"
-                  title={landed.name}
-                >
-                  {String(avatarSeed(landed.name)).slice(0, 2)}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xl font-semibold truncate">{landed.name}</div>
-                  <div className="text-sm text-white/60">Tilldelad automatiskt ✅</div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-white/60">Snurra för att välja nästa.</div>
-            )}
           </div>
         </aside>
       </section>

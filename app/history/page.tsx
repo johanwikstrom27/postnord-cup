@@ -208,7 +208,7 @@ export default async function HistoryPage() {
     <main className="space-y-6">
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h1 className="text-3xl font-semibold tracking-tight">Historik</h1>
-        <p className="mt-1 text-sm text-white/60">Här visas avslutade säsonger (finalen är låst).</p>
+        <p className="mt-1 text-sm text-white/60">Här visas avslutade säsonger.</p>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">

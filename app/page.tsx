@@ -1253,7 +1253,7 @@ export default async function Page({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-[48px_64px_32px] items-center justify-items-end gap-3 sm:grid-cols-[58px_82px_36px] sm:gap-4">
+                  <div className="grid grid-cols-[42px_64px_32px] items-center justify-items-end gap-3 pr-1 sm:grid-cols-[52px_82px_36px] sm:gap-4 sm:pr-2">
                     <div className="text-right">
                       <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Netto</div>
                       <div className="text-sm font-semibold leading-tight sm:text-base">

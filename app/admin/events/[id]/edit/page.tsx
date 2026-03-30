@@ -32,10 +32,13 @@ function toLocalInput(iso: string) {
 
 export default async function EditEventPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const sb = supabaseServer();
 
   const eventResp = await sb
@@ -45,11 +48,13 @@ export default async function EditEventPage({
     .single();
 
   const event = (eventResp.data as EventRow | null) ?? null;
+  const seasonId = sp?.season ?? event?.season_id ?? "";
+  const seasonQuery = seasonId ? `?season=${encodeURIComponent(seasonId)}` : "";
 
   if (!event) {
     return (
       <main className="space-y-4">
-        <Link href="/admin/events" className="text-sm text-white/70 hover:underline">
+        <Link href={`/admin/events${seasonQuery}`} className="text-sm text-white/70 hover:underline">
           ← Till tävlingar
         </Link>
         <div className="text-white/70">Tävlingen hittades inte.</div>
@@ -67,7 +72,7 @@ export default async function EditEventPage({
   return (
     <main className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/admin/events" className="text-sm text-white/70 hover:underline">
+        <Link href={`/admin/events${seasonQuery}`} className="text-sm text-white/70 hover:underline">
           ← Till tävlingar
         </Link>
         <Link href={`/events/${event.id}`} className="text-sm text-white/70 hover:underline">
@@ -82,6 +87,7 @@ export default async function EditEventPage({
 
         <form className="mt-6 space-y-6" method="POST" action="/api/admin/events/update">
           <input type="hidden" name="event_id" value={event.id} />
+          <input type="hidden" name="season" value={seasonId} />
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -197,7 +203,7 @@ export default async function EditEventPage({
               Spara ändringar
             </button>
             <Link
-              href="/admin/events"
+              href={`/admin/events${seasonQuery}`}
               className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-semibold hover:bg-white/10"
             >
               Avbryt

@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
 
   const event_id = String(form.get("event_id") ?? "");
-  if (!event_id) return NextResponse.redirect(new URL("/admin/events", req.url));
+  const season = String(form.get("season") ?? "").trim();
+  const listBack = season ? `/admin/events?season=${encodeURIComponent(season)}` : "/admin/events";
+  const editBack = season ? `/admin/events/${event_id}/edit?season=${encodeURIComponent(season)}` : `/admin/events/${event_id}/edit`;
+  if (!event_id) return NextResponse.redirect(new URL(listBack, req.url));
 
   const name = String(form.get("name") ?? "");
   const event_type = String(form.get("event_type") ?? "VANLIG");
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (eventResp.error || !eventResp.data) {
-    return NextResponse.redirect(new URL("/admin/events", req.url));
+    return NextResponse.redirect(new URL(listBack, req.url));
   }
 
   const resultCountResp = await sb
@@ -70,5 +73,5 @@ export async function POST(req: NextRequest) {
 
   await sb.from("events").update(patch).eq("id", event_id);
 
-  return NextResponse.redirect(new URL(`/admin/events/${event_id}/edit`, req.url));
+  return NextResponse.redirect(new URL(editBack, req.url));
 }

@@ -15,10 +15,14 @@ type PersonRow = {
 
 export default async function AdminPersonEditPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ season?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const seasonQuery = sp?.season ? `?season=${encodeURIComponent(sp.season)}` : "";
   const sb = supabaseServer();
 
   const personResp = await sb
@@ -33,7 +37,7 @@ export default async function AdminPersonEditPage({
   return (
     <main className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/admin/people" className="text-sm text-white/70 hover:underline">
+        <Link href={`/admin/people${seasonQuery}`} className="text-sm text-white/70 hover:underline">
           ← Spelarprofiler
         </Link>
         <Link href={`/players/${person.id}`} className="text-sm text-white/70 hover:underline">
@@ -59,6 +63,7 @@ export default async function AdminPersonEditPage({
 
         <form className="mt-6 space-y-5" method="POST" action="/api/admin/people/update">
           <input type="hidden" name="id" value={person.id} />
+          <input type="hidden" name="season" value={sp?.season ?? ""} />
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>

@@ -266,9 +266,11 @@ function FacePile({
 
 function FactTile({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{label}</div>
-      <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base">{value}</div>
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-5">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{label}</div>
+      <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:mt-3 lg:text-[17px]">
+        {value}
+      </div>
     </div>
   );
 }
@@ -279,12 +281,15 @@ function FactStrip({
   items: Array<{ label: string; value: React.ReactNode }>;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="grid gap-4 sm:grid-cols-3">
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-5">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
         {items.map((item) => (
-          <div key={item.label} className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{item.label}</div>
-            <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base">
+          <div
+            key={item.label}
+            className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-5 lg:border-t lg:border-white/10 lg:pt-3 first:border-t-0 first:pt-0"
+          >
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{item.label}</div>
+            <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:mt-0 lg:max-w-[14ch] lg:text-right lg:text-[17px] lg:leading-tight">
               {item.value}
             </div>
           </div>
@@ -296,9 +301,9 @@ function FactStrip({
 
 function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
   return (
-    <div className="space-y-1">
-      <div>{row.played.toLocaleString("sv-SE")} tävlingar</div>
-      <div className="text-xs text-white/65">
+    <div className="space-y-1 lg:space-y-2">
+      <div className="lg:text-[31px] lg:leading-none">{row.played.toLocaleString("sv-SE")} tävlingar</div>
+      <div className="text-xs text-white/65 lg:text-[13px] lg:leading-relaxed">
         Vanlig {row.playedByType.vanlig} • Major {row.playedByType.major} • Lag {row.playedByType.lag} • Final{" "}
         {row.playedByType.final}
       </div>
@@ -405,26 +410,34 @@ function FinishedHighlightCard({
     <Link
       href={href}
       className={[
-        "group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(10,14,24,0.82))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,24,0.90))]",
+        "group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(10,14,24,0.82))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,24,0.90))] lg:rounded-[32px] lg:hover:-translate-y-0.5",
         className ?? "",
       ].join(" ")}
     >
-      <div className="flex min-h-[220px] flex-col justify-between p-5 sm:p-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="flex min-h-[220px] flex-col justify-between p-5 sm:p-6 lg:min-h-[300px] lg:p-7">
+        <div className="flex items-start justify-between gap-4 lg:gap-6">
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{kicker}</div>
-            <div className="mt-3 text-2xl font-semibold leading-tight break-words sm:text-[30px]">{title}</div>
-            <div className="mt-2 text-sm leading-snug text-white/65 break-words sm:text-base">{subtitle}</div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-white/45 lg:text-[12px]">{kicker}</div>
+            <div className="mt-3 text-2xl font-semibold leading-tight break-words sm:text-[30px] lg:max-w-[11ch] lg:text-[42px]">
+              {title}
+            </div>
+            <div className="mt-2 text-sm leading-snug text-white/65 break-words sm:text-base lg:max-w-[28ch] lg:text-[17px]">
+              {subtitle}
+            </div>
           </div>
 
           {person ? (
-            <div className="shrink-0 rounded-full border border-white/10 bg-white/5 p-1">
+            <div className="shrink-0 rounded-full border border-white/10 bg-white/5 p-1 lg:p-1.5">
               <AvatarRound url={person.avatar_url} name={person.name} size={72} />
             </div>
           ) : null}
         </div>
 
-        {children ? <div className="mt-5 grid gap-3 sm:grid-cols-2">{children}</div> : null}
+        {children ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:mt-7 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.32fr)] lg:gap-4">
+            {children}
+          </div>
+        ) : null}
       </div>
     </Link>
   );
@@ -442,30 +455,32 @@ function FinishedStatsCard({
   return (
     <Link
       href={href}
-      className="group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(10,14,24,0.85))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(10,14,24,0.92))]"
+      className="group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(10,14,24,0.85))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(10,14,24,0.92))] lg:rounded-[32px] lg:hover:-translate-y-0.5"
       title="Säsongsstatistik"
     >
-      <div className="flex min-h-[220px] flex-col p-5 sm:p-6">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">Säsongsstatistik</div>
+      <div className="flex min-h-[220px] flex-col p-5 sm:p-6 lg:min-h-[300px] lg:p-7">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-white/45 lg:text-[12px]">Säsongsstatistik</div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-5 space-y-4 lg:mt-7 lg:space-y-5">
           {lines.map((line) => (
             <div
               key={line.label}
-              className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-start gap-x-4"
+              className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-start gap-x-4 lg:grid-cols-[76px_minmax(0,1fr)] lg:gap-x-5"
             >
-              <div className="flex min-h-[52px] items-center">
+              <div className="flex min-h-[52px] items-center lg:min-h-[60px]">
                 <FacePile players={line.players} />
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{line.label}</div>
-                <div className="mt-1 text-sm font-medium leading-snug text-white/90 break-words">{line.value}</div>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{line.label}</div>
+                <div className="mt-1 text-sm font-medium leading-snug text-white/90 break-words lg:mt-1.5 lg:text-[17px]">
+                  {line.value}
+                </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mt-auto pt-5 text-xs text-white/45 break-words">{footer}</div>
+        <div className="mt-auto pt-5 text-xs text-white/45 break-words lg:pt-8 lg:text-sm">{footer}</div>
       </div>
     </Link>
   );

@@ -88,7 +88,7 @@ export default function AdminSeasonBar({
           </label>
 
           <Link
-            href="/admin/seasons"
+            href={buildHref("/admin/seasons", selected)}
             className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
           >
             Säsonger →
@@ -116,7 +116,7 @@ export default function AdminSeasonBar({
           Tävlingar
         </Link>
         <Link
-          href="/admin/people"
+          href={buildHref("/admin/people", selected)}
           className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Spelarprofiler

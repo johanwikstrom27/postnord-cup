@@ -9,8 +9,14 @@ type PersonRow = {
   avatar_url: string | null;
 };
 
-export default async function AdminPeoplePage() {
+export default async function AdminPeoplePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   const sb = supabaseServer();
+  const sp = await searchParams;
+  const seasonQuery = sp?.season ? `?season=${encodeURIComponent(sp.season)}` : "";
 
   const peopleResp = await sb
     .from("people")
@@ -27,7 +33,7 @@ export default async function AdminPeoplePage() {
           <h1 className="text-2xl font-semibold">Spelarprofiler</h1>
           <div className="text-sm text-white/60">Redigera avatar, bio, kuriosa, styrkor & svagheter.</div>
         </div>
-        <Link href="/admin" className="text-sm text-white/70 hover:underline">
+        <Link href={`/admin${seasonQuery}`} className="text-sm text-white/70 hover:underline">
           ← Admin
         </Link>
       </div>
@@ -35,6 +41,7 @@ export default async function AdminPeoplePage() {
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <h2 className="font-semibold">Skapa ny spelare (profil)</h2>
         <form className="mt-4 grid gap-3 md:grid-cols-3" method="POST" action="/api/admin/people/create">
+          <input type="hidden" name="season" value={sp?.season ?? ""} />
           <input
             name="name"
             placeholder="Namn"
@@ -56,7 +63,7 @@ export default async function AdminPeoplePage() {
         {people.map((p) => (
           <Link
             key={p.id}
-            href={`/admin/people/${p.id}`}
+            href={`/admin/people/${p.id}${seasonQuery}`}
             className="flex items-center justify-between border-b border-white/10 px-4 py-4 hover:bg-white/5 last:border-b-0"
           >
             <div className="flex items-center gap-3">

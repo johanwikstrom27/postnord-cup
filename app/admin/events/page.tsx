@@ -153,6 +153,7 @@ export default async function AdminEvents({
 
                 <form method="POST" action="/api/admin/events/delete">
                   <input type="hidden" name="event_id" value={e.id} />
+                  <input type="hidden" name="season" value={season.id} />
                   <button className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/20">
                     Ta bort
                   </button>

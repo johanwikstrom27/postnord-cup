@@ -215,7 +215,7 @@ export default async function AdminSeasonPlayersPage({
               </form>
 
               <Link
-                href={`/admin/people/${r.people?.id ?? ""}`}
+                href={`/admin/people/${r.people?.id ?? ""}${seasonQuery}`}
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
               >
                 Profil →

@@ -187,8 +187,14 @@ async function computeFinalWinnerIfLocked(sb: ReturnType<typeof supabaseServer>,
   };
 }
 
-export default async function AdminSeasonsPage() {
+export default async function AdminSeasonsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   const sb = supabaseServer();
+  const sp = await searchParams;
+  const seasonQuery = sp?.season ? `?season=${encodeURIComponent(sp.season)}` : "";
 
   const seasonsResp = await sb
     .from("seasons")
@@ -230,7 +236,7 @@ export default async function AdminSeasonsPage() {
             Skapa ny säsong som inaktiv och byt sedan till aktiv.
           </div>
         </div>
-        <Link href="/admin" className="text-sm text-white/70 hover:underline">
+        <Link href={`/admin${seasonQuery}`} className="text-sm text-white/70 hover:underline">
           ← Admin
         </Link>
       </div>

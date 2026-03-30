@@ -285,6 +285,27 @@ function FactTile({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function FactStrip({
+  items,
+}: {
+  items: Array<{ label: string; value: React.ReactNode }>;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{item.label}</div>
+            <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base">
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
   return (
     <div className="space-y-1">
@@ -493,11 +514,13 @@ function FinishedPodiumSection({
                   </div>
 
                   <div
-                    className={`mt-4 flex w-full items-start justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${podiumHeight(
+                    className={`mt-4 flex w-full justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${
+                      place === 1 ? "items-center" : "items-start"
+                    } ${podiumHeight(
                       place
                     )} ${podiumTone(place)}`}
                   >
-                    <div className="pt-1">
+                    <div className={place === 1 ? "" : "pt-1"}>
                       <div className="flex items-center justify-center">{podiumSymbol(place)}</div>
                     </div>
                   </div>
@@ -776,6 +799,7 @@ export default async function Page({
   const finalWinnerStats =
     finalWinner ? leaderboard.find((player) => player.person_id === finalWinner.person_id) ?? null : null;
   const seasonFinished = Boolean(finalEvent?.locked && finalWinner);
+  const standingsRows = seasonFinished ? leaderboard : top5;
   const sameChampion = Boolean(finalWinner && leader && finalWinner.person_id === leader.person_id);
 
   const playedEventCount = lockedEvents.length;
@@ -914,11 +938,18 @@ export default async function Page({
                 className="lg:col-span-2"
               >
                 <FactTile label="Spelade" value={<PlayedBreakdown row={leader} />} />
-                <FactTile label="Pokaler" value={`${leader.wins.toLocaleString("sv-SE")} vinster`} />
-                <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
-                <FactTile
-                  label="Snittplacering"
-                  value={leader.avgPlace != null ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "—"}
+                <FactStrip
+                  items={[
+                    { label: "Pokaler", value: `${leader.wins.toLocaleString("sv-SE")} vinster` },
+                    { label: "Pallplatser", value: `${leader.podiums.toLocaleString("sv-SE")} totalt` },
+                    {
+                      label: "Snittplacering",
+                      value:
+                        leader.avgPlace != null
+                          ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 })
+                          : "—",
+                    },
+                  ]}
                 />
               </FinishedHighlightCard>
             ) : (
@@ -931,21 +962,24 @@ export default async function Page({
                   person={finalWinner}
                 >
                   <FactTile label="Spelade" value={finalWinnerStats ? <PlayedBreakdown row={finalWinnerStats} /> : "—"} />
-                  <FactTile
-                    label="Pokaler"
-                    value={`${(finalWinnerStats?.wins ?? 0).toLocaleString("sv-SE")} vinster`}
-                  />
-                  <FactTile
-                    label="Pallplatser"
-                    value={`${(finalWinnerStats?.podiums ?? 0).toLocaleString("sv-SE")} totalt`}
-                  />
-                  <FactTile
-                    label="Snittplacering"
-                    value={
-                      finalWinnerStats?.avgPlace != null
-                        ? finalWinnerStats.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 })
-                        : "—"
-                    }
+                  <FactStrip
+                    items={[
+                      {
+                        label: "Pokaler",
+                        value: `${(finalWinnerStats?.wins ?? 0).toLocaleString("sv-SE")} vinster`,
+                      },
+                      {
+                        label: "Pallplatser",
+                        value: `${(finalWinnerStats?.podiums ?? 0).toLocaleString("sv-SE")} totalt`,
+                      },
+                      {
+                        label: "Snittplacering",
+                        value:
+                          finalWinnerStats?.avgPlace != null
+                            ? finalWinnerStats.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 })
+                            : "—",
+                      },
+                    ]}
                   />
                 </FinishedHighlightCard>
 
@@ -958,11 +992,18 @@ export default async function Page({
                     person={leader}
                   >
                     <FactTile label="Spelade" value={<PlayedBreakdown row={leader} />} />
-                    <FactTile label="Pokaler" value={`${leader.wins.toLocaleString("sv-SE")} vinster`} />
-                    <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
-                    <FactTile
-                      label="Snittplacering"
-                      value={leader.avgPlace != null ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "—"}
+                    <FactStrip
+                      items={[
+                        { label: "Pokaler", value: `${leader.wins.toLocaleString("sv-SE")} vinster` },
+                        { label: "Pallplatser", value: `${leader.podiums.toLocaleString("sv-SE")} totalt` },
+                        {
+                          label: "Snittplacering",
+                          value:
+                            leader.avgPlace != null
+                              ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 })
+                              : "—",
+                        },
+                      ]}
                     />
                   </FinishedHighlightCard>
                 ) : (
@@ -1037,12 +1078,12 @@ export default async function Page({
       {/* TOPP 5 */}
       <section className="space-y-2">
         <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold">{seasonFinished ? "Slutställning" : "🏆 Topp 5"}</h2>
+          <h2 className="text-xl font-semibold">{seasonFinished ? "Slutställning grundserien" : "🏆 Topp 5"}</h2>
           <div />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-          {top5.map((r, idx) => (
+          {standingsRows.map((r, idx) => (
             <div key={r.person_id} className="flex items-center justify-between border-b border-white/10 px-4 py-3 last:border-b-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-8 text-white/60">{idx + 1}</div>

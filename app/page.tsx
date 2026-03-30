@@ -15,7 +15,7 @@ const LOGO_DESKTOP = 92; // px
 /* ===========================
    Types
 =========================== */
-type SeasonRow = { id: string; name: string; created_at?: string };
+type SeasonRow = { id: string; name: string; created_at?: string; is_current?: boolean };
 
 type RulesRow = {
   vanlig_best_of: number;
@@ -48,6 +48,7 @@ type ResRow = {
   season_player_id: string;
   event_id: string;
   poang: number | null;
+  placering: number | null;
   did_not_play: boolean;
 };
 
@@ -113,6 +114,45 @@ function medalForPlacing(placing: number | null) {
   return "🏅";
 }
 
+function fmtNames(names: string[]) {
+  if (names.length === 0) return "—";
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+async function resolveSeason(
+  sb: ReturnType<typeof supabaseServer>,
+  requestedSeasonId: string | null
+): Promise<SeasonRow | null> {
+  if (requestedSeasonId) {
+    const requested = await sb
+      .from("seasons")
+      .select("id,name,created_at,is_current")
+      .eq("id", requestedSeasonId)
+      .single();
+
+    if (requested.data) return requested.data as SeasonRow;
+  }
+
+  const current = await sb
+    .from("seasons")
+    .select("id,name,created_at,is_current")
+    .eq("is_current", true)
+    .limit(1)
+    .single();
+  if (current.data) return current.data as SeasonRow;
+
+  const latest = await sb
+    .from("seasons")
+    .select("id,name,created_at,is_current")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  return (latest.data as SeasonRow | null) ?? null;
+}
+
 function AvatarRound({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   return (
     <div
@@ -167,6 +207,40 @@ function MiniCard({
           {children ? <div className="mt-2">{children}</div> : null}
         </div>
         <div className="flex items-center">{thumb}</div>
+      </div>
+    </Link>
+  );
+}
+
+function StatsMiniCard({
+  href,
+  lines,
+  footer,
+}: {
+  href: string;
+  lines: Array<{ label: string; value: string }>;
+  footer?: string | null;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group block rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
+      title="Säsongsstatistik"
+    >
+      <div className="flex h-[120px] flex-col justify-between p-4">
+        <div>
+          <div className="text-[10px] text-white/60">Säsongsstatistik</div>
+          <div className="mt-2 space-y-1.5">
+            {lines.map((line) => (
+              <div key={line.label} className="flex items-baseline justify-between gap-3 text-[11px] leading-tight">
+                <span className="text-white/60">{line.label}</span>
+                <span className="truncate text-right font-medium text-white/90">{line.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {footer ? <div className="text-[10px] text-white/45">{footer}</div> : null}
       </div>
     </Link>
   );
@@ -231,23 +305,15 @@ function NextEventBig({ event, seasonQuery }: { event: EventRow | null; seasonQu
 /* ===========================
    Page
 =========================== */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   const sb = supabaseServer();
+  const sp = await searchParams;
 
-  // current season
-  const currentResp = await sb.from("seasons").select("id,name,created_at").eq("is_current", true).limit(1).single();
-  let season = (currentResp.data as SeasonRow | null) ?? null;
-
-  if (!season) {
-    const latestResp = await sb
-      .from("seasons")
-      .select("id,name,created_at")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    season = (latestResp.data as SeasonRow | null) ?? null;
-  }
-
+  const season = await resolveSeason(sb, sp?.season ?? null);
   if (!season) return <div className="text-white/70">Ingen säsong hittades.</div>;
   const seasonQuery = `?season=${encodeURIComponent(season.id)}`;
 
@@ -307,21 +373,36 @@ export default async function Page() {
   if (lockedEventIds.length && spIds.length) {
     const resResp = await sb
       .from("results")
-      .select("season_player_id,event_id,poang,did_not_play")
+      .select("season_player_id,event_id,poang,placering,did_not_play")
       .in("event_id", lockedEventIds)
       .in("season_player_id", spIds);
 
     results = (resResp.data ?? []) as any[] as ResRow[];
   }
 
-  const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
-  for (const p of players) bySp.set(p.id, { vanlig: [], major: [], lag: [] });
+  const playerMeta = new Map(
+    players.map((p) => [
+      p.id,
+      {
+        person_id: p.person_id,
+        name: p.people?.name ?? "Okänd",
+        avatar_url: p.people?.avatar_url ?? null,
+      },
+    ])
+  );
+
+  const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[]; played: number; wins: number; podiums: number }>();
+  for (const p of players) bySp.set(p.id, { vanlig: [], major: [], lag: [], played: 0, wins: 0, podiums: 0 });
 
   for (const r of results) {
     if (r.did_not_play) continue;
     const t = typeByEvent.get(r.event_id);
     const b = bySp.get(r.season_player_id);
     if (!t || !b) continue;
+
+    b.played += 1;
+    if (r.placering === 1) b.wins += 1;
+    if (typeof r.placering === "number" && r.placering <= 3) b.podiums += 1;
 
     const pts = Number(r.poang ?? 0);
     if (t === "VANLIG") b.vanlig.push(pts);
@@ -331,19 +412,66 @@ export default async function Page() {
 
   const leaderboard = players
     .map((p) => {
-      const name = p.people?.name ?? "Okänd";
-      const avatar_url = p.people?.avatar_url ?? null;
       const b = bySp.get(p.id)!;
       const total =
         sumTopN(b.vanlig, rules.vanlig_best_of) +
         sumTopN(b.major, rules.major_best_of) +
         sumTopN(b.lag, rules.lagtavling_best_of);
-      return { person_id: p.person_id, name, avatar_url, total };
+      return {
+        person_id: p.person_id,
+        name: p.people?.name ?? "Okänd",
+        avatar_url: p.people?.avatar_url ?? null,
+        total,
+        played: b.played,
+        wins: b.wins,
+        podiums: b.podiums,
+      };
     })
     .sort((a, b) => b.total - a.total);
 
   const leader = leaderboard[0] ?? null;
   const top5 = leaderboard.slice(0, 5);
+
+  const finalWinnerRow =
+    finalEvent && finalEvent.locked
+      ? results.find((r) => r.event_id === finalEvent.id && r.placering === 1 && !r.did_not_play) ?? null
+      : null;
+  const finalWinner = finalWinnerRow ? playerMeta.get(finalWinnerRow.season_player_id) ?? null : null;
+  const seasonFinished = Boolean(finalEvent?.locked && finalWinner);
+
+  const playedEventCount = lockedEvents.length;
+  const fullAttendancePlayers =
+    playedEventCount > 0 ? leaderboard.filter((p) => p.played === playedEventCount) : [];
+
+  const mostWins = Math.max(0, ...leaderboard.map((p) => p.wins));
+  const mostWinPlayers = mostWins > 0 ? leaderboard.filter((p) => p.wins === mostWins) : [];
+
+  const mostPodiums = Math.max(0, ...leaderboard.map((p) => p.podiums));
+  const mostPodiumPlayers = mostPodiums > 0 ? leaderboard.filter((p) => p.podiums === mostPodiums) : [];
+
+  const mostStarts = Math.max(0, ...leaderboard.map((p) => p.played));
+  const mostStartPlayers = mostStarts > 0 ? leaderboard.filter((p) => p.played === mostStarts) : [];
+
+  const statsLines =
+    fullAttendancePlayers.length > 0
+      ? [
+          { label: "Full närvaro", value: fmtNames(fullAttendancePlayers.map((p) => p.name)) },
+          { label: "Flest pokaler", value: `${fmtNames(mostWinPlayers.map((p) => p.name))} • ${mostWins}` },
+          { label: "Flest pallplatser", value: `${fmtNames(mostPodiumPlayers.map((p) => p.name))} • ${mostPodiums}` },
+        ]
+      : [
+          { label: "Närmast full närvaro", value: `${fmtNames(mostStartPlayers.map((p) => p.name))} • ${mostStarts}/${playedEventCount}` },
+          { label: "Flest pokaler", value: `${fmtNames(mostWinPlayers.map((p) => p.name))} • ${mostWins}` },
+          { label: "Flest pallplatser", value: `${fmtNames(mostPodiumPlayers.map((p) => p.name))} • ${mostPodiums}` },
+        ];
+
+  const summaryBits = [
+    `${lockedEvents.length} spelade tävlingar`,
+    `${players.length} spelare`,
+    fullAttendancePlayers.length > 0
+      ? `${fmtNames(fullAttendancePlayers.map((p) => p.name))} stod för full närvaro`
+      : `${fmtNames(mostStartPlayers.map((p) => p.name))} var närmast full närvaro`,
+  ];
 
   // top3 last played
   let top3: TopRow[] = [];
@@ -398,60 +526,144 @@ export default async function Page() {
 
         {/* Symmetric cards */}
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {leader ? (
+          {seasonFinished && finalWinner ? (
             <MiniCard
-              href={`/players/${leader.person_id}${seasonQuery}`}
-              kicker="Ledare"
-              title={leader.name}
-              sub={`${leader.total.toLocaleString("sv-SE")} p`}
-              thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={56} />}
+              href={`/events/${finalEvent!.id}${seasonQuery}`}
+              kicker="Säsongens mästare"
+              title={finalWinner.name}
+              sub={`Vann ${finalEvent?.name ?? "PostNord Cup Final"}${finalEvent?.course ? ` • ${finalEvent.course}` : ""}`}
+              thumb={<AvatarRound url={finalWinner.avatar_url} name={finalWinner.name} size={56} />}
             />
           ) : (
-            <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
-              Ingen ledare ännu
-            </div>
+            <>
+              {leader ? (
+                <MiniCard
+                  href={`/players/${leader.person_id}${seasonQuery}`}
+                  kicker="Ledare"
+                  title={leader.name}
+                  sub={`${leader.total.toLocaleString("sv-SE")} p`}
+                  thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={56} />}
+                />
+              ) : (
+                <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
+                  Ingen ledare ännu
+                </div>
+              )}
+
+              {finalEvent ? (
+                <MiniCard
+                  href={`/events/${finalEvent.id}${seasonQuery}`}
+                  kicker="PostNord Cup Final"
+                  title={`Final om ${finalDays ?? "—"} dagar`}
+                  sub={`${fmtDateShort(finalEvent.starts_at)}${finalEvent.course ? ` • ${finalEvent.course}` : ""}`}
+                  thumb={<Thumb url={finalEvent.image_url} alt="Final" />}
+                />
+              ) : (
+                <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
+                  Ingen final inlagd
+                </div>
+              )}
+
+              {nextEvent ? (
+                <MiniCard
+                  href={`/events/${nextEvent.id}${seasonQuery}`}
+                  kicker="Nästa tävling"
+                  title={nextEvent.name}
+                  sub={`${fmtDateShort(nextEvent.starts_at)} • ${typeLabel(nextEvent.event_type)}`}
+                  thumb={<Thumb url={nextEvent.image_url} alt={nextEvent.name} />}
+                >
+                  <div className="mt-2 flex items-center gap-3 text-[11px] text-white/75">
+                    {nextEvent.setting_wind ? <span>🌬️ {nextEvent.setting_wind}</span> : null}
+                    {nextEvent.setting_tee_meters ? <span>⛳ {nextEvent.setting_tee_meters}</span> : null}
+                    {nextEvent.setting_pins ? <span>📍 {nextEvent.setting_pins}</span> : null}
+                  </div>
+                </MiniCard>
+              ) : (
+                <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
+                  Ingen kommande tävling
+                </div>
+              )}
+            </>
           )}
 
-          {finalEvent ? (
-            <MiniCard
-              href={`/events/${finalEvent.id}${seasonQuery}`}
-              kicker="PostNord Cup Final"
-              title={`Final om ${finalDays ?? "—"} dagar`}
-              sub={`${fmtDateShort(finalEvent.starts_at)}${finalEvent.course ? ` • ${finalEvent.course}` : ""}`}
-              thumb={<Thumb url={finalEvent.image_url} alt="Final" />}
-            />
-          ) : (
-            <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
-              Ingen final inlagd
-            </div>
-          )}
-
-          {nextEvent ? (
-            <MiniCard
-              href={`/events/${nextEvent.id}${seasonQuery}`}
-              kicker="Nästa tävling"
-              title={nextEvent.name}
-              sub={`${fmtDateShort(nextEvent.starts_at)} • ${typeLabel(nextEvent.event_type)}`}
-              thumb={<Thumb url={nextEvent.image_url} alt={nextEvent.name} />}
-            >
-              <div className="mt-2 flex items-center gap-3 text-[11px] text-white/75">
-                {nextEvent.setting_wind ? <span>🌬️ {nextEvent.setting_wind}</span> : null}
-                {nextEvent.setting_tee_meters ? <span>⛳ {nextEvent.setting_tee_meters}</span> : null}
-                {nextEvent.setting_pins ? <span>📍 {nextEvent.setting_pins}</span> : null}
+          {seasonFinished ? (
+            leader ? (
+              <MiniCard
+                href={`/leaderboard${seasonQuery}`}
+                kicker="Vinnare av grundserien"
+                title={leader.name}
+                sub={`${leader.total.toLocaleString("sv-SE")} p i slutställningen`}
+                thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={56} />}
+              />
+            ) : (
+              <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
+                Ingen grundserievinnare ännu
               </div>
-            </MiniCard>
+            )
           ) : (
-            <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
-              Ingen kommande tävling
-            </div>
+            <></>
           )}
+
+          {seasonFinished ? (
+            <StatsMiniCard
+              href={`/overview${seasonQuery}`}
+              lines={statsLines}
+              footer={playedEventCount > 0 ? `${playedEventCount} av ${events.length} tävlingar spelade och låsta` : null}
+            />
+          ) : null}
         </div>
       </section>
+
+      {seasonFinished && finalWinner && finalEvent ? (
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-xs text-white/60">Säsongssummering</div>
+              <h2 className="mt-1 text-xl font-semibold">
+                {finalWinner.name} är säsongens mästare i {season.name}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-white/70">
+                {finalWinner.name} tog hem {finalEvent.name}
+                {finalEvent.course ? ` på ${finalEvent.course}` : ""}. {leader ? `${leader.name} vann grundserien på ${leader.total.toLocaleString("sv-SE")} poäng.` : ""}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-[11px] text-white/70">
+              {summaryBits.map((bit) => (
+                <span key={bit} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5">
+                  {bit}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href={`/events/${finalEvent.id}${seasonQuery}`}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+            >
+              Se finalresultatet →
+            </Link>
+            <Link
+              href={`/leaderboard${seasonQuery}`}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+            >
+              Se slutställningen →
+            </Link>
+            <Link
+              href="/history"
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
+            >
+              Till historik →
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {/* TOPP 5 */}
       <section className="space-y-2">
         <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold">🏆 Topp 5</h2>
+          <h2 className="text-xl font-semibold">{seasonFinished ? "🏁 Slutställning" : "🏆 Topp 5"}</h2>
           <div />
         </div>
 
@@ -475,8 +687,16 @@ export default async function Page() {
       <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-xs text-white/60">Topp 3</div>
-            <div className="font-semibold">{lastPlayed ? `Senaste: ${lastPlayed.name}` : "Ingen spelad tävling ännu"}</div>
+            <div className="text-xs text-white/60">
+              {seasonFinished && finalEvent?.id === lastPlayed?.id ? "Finalpallen" : "Topp 3"}
+            </div>
+            <div className="font-semibold">
+              {lastPlayed
+                ? seasonFinished && finalEvent?.id === lastPlayed.id
+                  ? lastPlayed.name
+                  : `Senaste: ${lastPlayed.name}`
+                : "Ingen spelad tävling ännu"}
+            </div>
             {lastPlayed && (
               <div className="text-sm text-white/60">
                 {typeLabel(lastPlayed.event_type)} • {fmtDateTime(lastPlayed.starts_at)}
@@ -535,15 +755,16 @@ export default async function Page() {
         </div>
       </section>
 
-      {/* NEXT EVENT BIG */}
-      <section className="space-y-2">
-        <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold">🗓️ Nästa tävling</h2>
-          <div />
-        </div>
+      {!seasonFinished ? (
+        <section className="space-y-2">
+          <div className="flex items-end justify-between">
+            <h2 className="text-xl font-semibold">🗓️ Nästa tävling</h2>
+            <div />
+          </div>
 
-        <NextEventBig event={nextEvent} seasonQuery={seasonQuery} />
-      </section>
+          <NextEventBig event={nextEvent} seasonQuery={seasonQuery} />
+        </section>
+      ) : null}
     </main>
   );
 }

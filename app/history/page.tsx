@@ -22,7 +22,7 @@ type FinalWinnerRow = {
   season_players: { person_id: string; people: PersonRow | null } | null;
 };
 
-type EventRow = { id: string; event_type: string; locked: boolean };
+type EventRow = { id: string; event_type: string; locked: boolean; starts_at: string };
 
 type SPRow = {
   id: string; // season_player_id
@@ -76,7 +76,7 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
 async function getFinalEvent(sb: ReturnType<typeof supabaseServer>, seasonId: string) {
   const ev = await sb
     .from("events")
-    .select("id,event_type,locked")
+    .select("id,event_type,locked,starts_at")
     .eq("season_id", seasonId)
     .eq("event_type", "FINAL")
     .limit(1)
@@ -194,11 +194,15 @@ export default async function HistoryPage() {
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];
 
   // Endast säsonger där FINAL finns och är låst
-  const finished: Array<{ season: SeasonRow; finalEventId: string }> = [];
+  const finished: Array<{ season: SeasonRow; finalEventId: string; finalStartsAt: string }> = [];
   for (const s of seasons) {
     const fe = await getFinalEvent(sb, s.id);
-    if (fe?.locked === true) finished.push({ season: s, finalEventId: fe.id });
+    if (fe?.locked === true) {
+      finished.push({ season: s, finalEventId: fe.id, finalStartsAt: fe.starts_at });
+    }
   }
+
+  finished.sort((a, b) => new Date(b.finalStartsAt).getTime() - new Date(a.finalStartsAt).getTime());
 
   return (
     <main className="space-y-6">

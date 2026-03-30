@@ -266,9 +266,9 @@ function FacePile({
 
 function FactTile({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-5">
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-4">
       <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{label}</div>
-      <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:mt-3 lg:text-[17px]">
+      <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:mt-2.5 lg:text-[16px]">
         {value}
       </div>
     </div>
@@ -281,15 +281,15 @@ function FactStrip({
   items: Array<{ label: string; value: React.ReactNode }>;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-5">
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 lg:rounded-[24px] lg:px-5 lg:py-4">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-3 lg:gap-3">
         {items.map((item) => (
           <div
             key={item.label}
-            className="min-w-0 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:gap-5 lg:border-t lg:border-white/10 lg:pt-3 first:border-t-0 first:pt-0"
+            className="min-w-0 lg:rounded-[18px] lg:border lg:border-white/10 lg:bg-white/[0.03] lg:px-4 lg:py-4"
           >
             <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{item.label}</div>
-            <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:mt-0 lg:max-w-[14ch] lg:text-right lg:text-[17px] lg:leading-tight">
+            <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base lg:text-[16px] lg:leading-snug">
               {item.value}
             </div>
           </div>
@@ -302,8 +302,8 @@ function FactStrip({
 function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
   return (
     <div className="space-y-1 lg:space-y-2">
-      <div className="lg:text-[31px] lg:leading-none">{row.played.toLocaleString("sv-SE")} tävlingar</div>
-      <div className="text-xs text-white/65 lg:text-[13px] lg:leading-relaxed">
+      <div className="lg:text-[24px] lg:leading-tight">{row.played.toLocaleString("sv-SE")} tävlingar</div>
+      <div className="text-xs text-white/65 lg:text-[12px] lg:leading-relaxed">
         Vanlig {row.playedByType.vanlig} • Major {row.playedByType.major} • Lag {row.playedByType.lag} • Final{" "}
         {row.playedByType.final}
       </div>
@@ -414,14 +414,14 @@ function FinishedHighlightCard({
         className ?? "",
       ].join(" ")}
     >
-      <div className="flex min-h-[220px] flex-col justify-between p-5 sm:p-6 lg:min-h-[300px] lg:p-7">
+      <div className="flex min-h-[220px] flex-col justify-between p-5 sm:p-6 lg:min-h-[250px] lg:p-7">
         <div className="flex items-start justify-between gap-4 lg:gap-6">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.18em] text-white/45 lg:text-[12px]">{kicker}</div>
-            <div className="mt-3 text-2xl font-semibold leading-tight break-words sm:text-[30px] lg:max-w-[11ch] lg:text-[42px]">
+            <div className="mt-3 text-2xl font-semibold leading-tight break-words sm:text-[30px] lg:max-w-[16ch] lg:text-[34px]">
               {title}
             </div>
-            <div className="mt-2 text-sm leading-snug text-white/65 break-words sm:text-base lg:max-w-[28ch] lg:text-[17px]">
+            <div className="mt-2 text-sm leading-snug text-white/65 break-words sm:text-base lg:max-w-[42ch] lg:text-[16px]">
               {subtitle}
             </div>
           </div>
@@ -434,7 +434,7 @@ function FinishedHighlightCard({
         </div>
 
         {children ? (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:mt-7 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.32fr)] lg:gap-4">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:mt-6 lg:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)] lg:gap-4">
             {children}
           </div>
         ) : null}
@@ -458,10 +458,10 @@ function FinishedStatsCard({
       className="group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(10,14,24,0.85))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(10,14,24,0.92))] lg:rounded-[32px] lg:hover:-translate-y-0.5"
       title="Säsongsstatistik"
     >
-      <div className="flex min-h-[220px] flex-col p-5 sm:p-6 lg:min-h-[300px] lg:p-7">
+      <div className="flex min-h-[220px] flex-col p-5 sm:p-6 lg:min-h-[250px] lg:p-7">
         <div className="text-[11px] uppercase tracking-[0.18em] text-white/45 lg:text-[12px]">Säsongsstatistik</div>
 
-        <div className="mt-5 space-y-4 lg:mt-7 lg:space-y-5">
+        <div className="mt-5 space-y-4 lg:mt-6 lg:space-y-4">
           {lines.map((line) => (
             <div
               key={line.label}
@@ -472,7 +472,7 @@ function FinishedStatsCard({
               </div>
               <div className="min-w-0">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-white/45 lg:text-[12px]">{line.label}</div>
-                <div className="mt-1 text-sm font-medium leading-snug text-white/90 break-words lg:mt-1.5 lg:text-[17px]">
+                <div className="mt-1 text-sm font-medium leading-snug text-white/90 break-words lg:mt-1 lg:text-[16px]">
                   {line.value}
                 </div>
               </div>
@@ -1087,7 +1087,7 @@ export default async function Page({
         <>
           <FinishedPodiumSection event={finalEvent} rows={top3} seasonQuery={seasonQuery} />
 
-          <section className="grid gap-4 lg:grid-cols-3">
+          <section className="grid gap-4 lg:mx-auto lg:max-w-[1120px] lg:grid-cols-1">
             {sameChampion && leader ? (
               <FinishedHighlightCard
                 href={`/leaderboard${seasonQuery}`}
@@ -1095,7 +1095,6 @@ export default async function Page({
                 title={leader.name}
                 subtitle="Vann både PostNord Cup Final och grundserien"
                 person={leader}
-                className="lg:col-span-2"
               >
                 <FactTile label="Spelade" value={<PlayedBreakdown row={leader} />} />
                 <FactStrip

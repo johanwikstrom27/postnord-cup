@@ -114,6 +114,20 @@ function medalForPlacing(placing: number | null) {
   return "🏅";
 }
 
+function podiumHeight(placing: number | null) {
+  if (placing === 1) return "h-32 sm:h-36";
+  if (placing === 2) return "h-24 sm:h-28";
+  if (placing === 3) return "h-20 sm:h-24";
+  return "h-20";
+}
+
+function podiumTone(placing: number | null) {
+  if (placing === 1) return "from-amber-300/20 via-amber-200/10 to-white/5 border-amber-200/20";
+  if (placing === 2) return "from-slate-200/20 via-slate-100/10 to-white/5 border-slate-200/20";
+  if (placing === 3) return "from-orange-400/20 via-orange-200/10 to-white/5 border-orange-200/20";
+  return "from-white/10 to-white/5 border-white/10";
+}
+
 function fmtNames(names: string[]) {
   if (names.length === 0) return "—";
   if (names.length === 1) return names[0];
@@ -528,9 +542,11 @@ export default async function Page({
               href={`/events/${finalEvent!.id}${seasonQuery}`}
               kicker="Säsongens mästare"
               title={finalWinner.name}
-              sub={`Vann ${finalEvent?.name ?? "PostNord Cup Final"}${finalEvent?.course ? ` • ${finalEvent.course}` : ""}`}
+              sub={`Vann ${finalEvent?.name ?? "PostNord Cup Final"}`}
               thumb={<AvatarRound url={finalWinner.avatar_url} name={finalWinner.name} size={50} />}
-            />
+            >
+              {finalEvent?.course ? <div className="text-[11px] leading-snug text-white/60 break-words">{finalEvent.course}</div> : null}
+            </MiniCard>
           ) : (
             <>
               {leader ? (
@@ -606,7 +622,11 @@ export default async function Page({
             <StatsMiniCard
               href={`/overview${seasonQuery}`}
               lines={statsLines}
-              footer={playedEventCount > 0 ? `${playedEventCount} av ${events.length} tävlingar spelade och låsta` : null}
+              footer={
+                playedEventCount > 0
+                  ? `${playedEventCount.toLocaleString("sv-SE")} tävlingar - ${players.length.toLocaleString("sv-SE")} deltagare`
+                  : `${players.length.toLocaleString("sv-SE")} deltagare`
+              }
             />
           ) : null}
         </div>
@@ -663,44 +683,65 @@ export default async function Page({
           )}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4">
           {top3.length ? (
-            top3.map((r) => {
-              const name = r.season_players?.people?.name ?? "Okänd";
-              const avatar = r.season_players?.people?.avatar_url ?? null;
-              const personId = r.season_players?.person_id ?? "";
-              const medal = medalForPlacing(r.placering);
+            <div className="grid grid-cols-3 items-end gap-2 sm:gap-4">
+              {[2, 1, 3].map((place) => {
+                const r = top3.find((row) => row.placering === place) ?? null;
+                if (!r) {
+                  return <div key={`empty-${place}`} />;
+                }
 
-              const strokes =
-                lastPlayed?.event_type === "LAGTÄVLING"
-                  ? r.lag_score
-                  : r.adjusted_score != null
-                  ? r.adjusted_score
-                  : r.net_strokes != null
-                  ? r.net_strokes
-                  : r.gross_strokes;
+                const name = r.season_players?.people?.name ?? "Okänd";
+                const avatar = r.season_players?.people?.avatar_url ?? null;
+                const personId = r.season_players?.person_id ?? "";
+                const medal = medalForPlacing(r.placering);
 
-              const pts = Number(r.poang ?? 0);
+                const strokes =
+                  lastPlayed?.event_type === "LAGTÄVLING"
+                    ? r.lag_score
+                    : r.adjusted_score != null
+                    ? r.adjusted_score
+                    : r.net_strokes != null
+                    ? r.net_strokes
+                    : r.gross_strokes;
 
-              return (
-                <Link
-                  key={`${personId}-${r.placering ?? "x"}`}
-                  href={personId ? `/players/${personId}${seasonQuery}` : "#"}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4 hover:bg-black/30 transition"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="text-lg">{medal}</div>
-                    <AvatarRound url={avatar} name={name} size={40} />
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">{name}</div>
-                      <div className="text-xs text-white/60">
-                        {strokes ?? "—"} slag • {pts.toLocaleString("sv-SE")} p
+                const pts = Number(r.poang ?? 0);
+                const meta = pts > 0 ? `${strokes ?? "—"} slag • ${pts.toLocaleString("sv-SE")} p` : `${strokes ?? "—"} slag`;
+
+                return (
+                  <Link
+                    key={`${personId}-${r.placering ?? "x"}`}
+                    href={personId ? `/players/${personId}${seasonQuery}` : "#"}
+                    className="group block min-w-0"
+                  >
+                    <div className="flex flex-col items-center text-center">
+                      <div className="mb-2 text-2xl sm:text-3xl">{medal}</div>
+                      <AvatarRound url={avatar} name={name} size={place === 1 ? 64 : 54} />
+                      <div className="mt-2 min-w-0">
+                        <div className="text-xs font-semibold leading-tight text-white sm:text-sm break-words">
+                          {name}
+                        </div>
+                        <div className="mt-1 text-[10px] leading-tight text-white/60 sm:text-[11px] break-words">
+                          {meta}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`mt-3 flex w-full items-end justify-center rounded-t-2xl border border-b-0 bg-gradient-to-b px-2 pb-3 pt-4 transition group-hover:bg-black/30 ${podiumHeight(
+                          r.placering
+                        )} ${podiumTone(r.placering)}`}
+                      >
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-white/50">Plats</div>
+                          <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">{r.placering}</div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              );
-            })
+                  </Link>
+                );
+              })}
+            </div>
           ) : (
             <div className="text-white/60">Inga resultat att visa.</div>
           )}

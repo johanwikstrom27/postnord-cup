@@ -321,9 +321,9 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
         <svg viewBox="0 0 32 32" className="absolute inset-0 h-full w-full" aria-hidden="true">
           <polygon
             points="16,2 30,29 2,29"
-            fill="rgba(52, 211, 153, 0.26)"
-            stroke="rgba(167, 243, 208, 0.9)"
-            strokeWidth="1.5"
+            fill="rgba(52, 211, 153, 0.20)"
+            stroke="rgba(167, 243, 208, 0.72)"
+            strokeWidth="1.25"
             strokeLinejoin="round"
           />
         </svg>
@@ -338,9 +338,9 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
         <svg viewBox="0 0 32 32" className="absolute inset-0 h-full w-full" aria-hidden="true">
           <polygon
             points="2,3 30,3 16,30"
-            fill="rgba(248, 113, 113, 0.26)"
-            stroke="rgba(254, 202, 202, 0.9)"
-            strokeWidth="1.5"
+            fill="rgba(248, 113, 113, 0.20)"
+            stroke="rgba(254, 202, 202, 0.72)"
+            strokeWidth="1.25"
             strokeLinejoin="round"
           />
         </svg>
@@ -1234,7 +1234,7 @@ export default async function Page({
             ? finalStandings.map((row) => (
                 <div
                   key={row.person_id}
-                  className="grid grid-cols-[28px_30px_minmax(0,1fr)_52px_68px_32px] items-center gap-2 border-b border-white/10 px-3 py-2.5 last:border-b-0 sm:grid-cols-[32px_34px_minmax(0,1fr)_62px_82px_36px] sm:gap-3 sm:px-4"
+                  className="grid grid-cols-[30px_32px_minmax(0,1fr)_60px_78px_36px] items-center gap-3 border-b border-white/10 px-3 py-2.5 last:border-b-0 sm:grid-cols-[32px_34px_minmax(0,1fr)_66px_92px_40px] sm:gap-4 sm:px-4"
                 >
                   <div className="flex justify-center">
                     <RankBadge rank={row.displayRank} />

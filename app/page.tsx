@@ -203,6 +203,14 @@ function fmtNames(names: string[]) {
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
 }
 
+function shortPlayerName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return name;
+  const first = parts[0];
+  const lastInitial = parts[parts.length - 1]?.charAt(0) ?? "";
+  return lastInitial ? `${first} ${lastInitial}` : first;
+}
+
 function AvatarRound({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
   return (
     <div
@@ -310,10 +318,10 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
   if (movement > 0) {
     return (
       <span
-        className="inline-flex h-7 w-7 items-center justify-center border border-emerald-300/25 bg-emerald-400/12 text-[10px] font-bold text-emerald-200"
+        className="inline-flex h-8 w-8 items-center justify-center border border-emerald-300/40 bg-emerald-400/18 text-[11px] font-black text-emerald-100 shadow-[0_0_0_1px_rgba(52,211,153,0.10)]"
         style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }}
       >
-        <span className="translate-y-[2px]">{movement}</span>
+        <span className="translate-y-[3px]">{movement}</span>
       </span>
     );
   }
@@ -321,10 +329,10 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
   if (movement < 0) {
     return (
       <span
-        className="inline-flex h-7 w-7 items-center justify-center border border-red-300/25 bg-red-400/12 text-[10px] font-bold text-red-200"
+        className="inline-flex h-8 w-8 items-center justify-center border border-red-300/40 bg-red-400/18 text-[11px] font-black text-red-100 shadow-[0_0_0_1px_rgba(248,113,113,0.10)]"
         style={{ clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)" }}
       >
-        <span className="-translate-y-[2px]">{Math.abs(movement)}</span>
+        <span className="-translate-y-[3px]">{Math.abs(movement)}</span>
       </span>
     );
   }
@@ -1223,9 +1231,9 @@ export default async function Page({
                   <div className="min-w-0">
                     <Link
                       href={`/players/${row.person_id}${seasonQuery}`}
-                      className="block truncate text-[15px] font-medium leading-tight hover:underline sm:text-base"
+                      className="block truncate text-[14px] font-medium leading-tight hover:underline sm:text-[15px]"
                     >
-                        {row.name}
+                      {shortPlayerName(row.name)}
                     </Link>
                     <div className="truncate text-[11px] text-white/50 sm:text-xs">
                       Grundserie #{row.baseRank}

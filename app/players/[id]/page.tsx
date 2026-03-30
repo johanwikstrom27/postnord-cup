@@ -66,6 +66,51 @@ type TrophyWinRespRow = {
 };
 
 type SeasonPlayerIdRow = { id: string };
+type PersonSeasonPlayerRow = { id: string; season_id: string; person_id: string };
+type SeasonMetaRow = { id: string; name: string; created_at: string; is_published: boolean | null };
+type SeasonRuleRow = {
+  season_id: string;
+  vanlig_best_of: number | null;
+  major_best_of: number | null;
+  lagtavling_best_of: number | null;
+};
+type SeasonEventRow = {
+  id: string;
+  season_id: string;
+  event_type: string;
+  locked: boolean;
+  starts_at: string;
+};
+type SeasonPlayerSummaryResultRow = {
+  season_player_id: string;
+  event_id: string;
+  poang: number | null;
+  placering: number | null;
+  did_not_play: boolean;
+  events: { id: string; season_id: string; event_type: string; locked: boolean } | null;
+};
+type SeasonPlayerSummaryResultRespRow = {
+  season_player_id: string;
+  event_id: string;
+  poang: number | null;
+  placering: number | null;
+  did_not_play: boolean;
+  events:
+    | { id: string; season_id: string; event_type: string; locked: boolean }
+    | Array<{ id: string; season_id: string; event_type: string; locked: boolean }>
+    | null;
+};
+type SeasonHistoryCard = {
+  seasonId: string;
+  seasonName: string;
+  seasonYear: number;
+  finalPlaceLabel: string;
+  finalPlaceTone: string;
+  baseRankLabel: string;
+  wins: number;
+  podiums: number;
+  participationLabel: string;
+};
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -140,6 +185,35 @@ function TrophySlot({
       </div>
     </div>
   );
+}
+
+function seasonYear(name: string) {
+  const match = name.match(/(19|20)\d{2}/);
+  return match ? Number(match[0]) : 0;
+}
+
+function rankFromTotals(items: Array<{ id: string; total: number }>) {
+  const sorted = items.slice().sort((a, b) => b.total - a.total);
+  const rankById = new Map<string, number>();
+
+  let currentRank = 1;
+  for (let i = 0; i < sorted.length; i += 1) {
+    if (i > 0 && sorted[i].total < sorted[i - 1].total) {
+      currentRank = i + 1;
+    }
+    rankById.set(sorted[i].id, currentRank);
+  }
+
+  return rankById;
+}
+
+function finalPlaceTone(label: string) {
+  if (label === "#1") return "border-amber-300/30 bg-amber-300/10 text-amber-100";
+  if (label === "#2") return "border-slate-300/30 bg-slate-300/10 text-slate-100";
+  if (label === "#3") return "border-orange-300/30 bg-orange-300/10 text-orange-100";
+  if (label === "DNS") return "border-red-400/20 bg-red-400/10 text-red-200";
+  if (label === "Ej final") return "border-white/10 bg-white/5 text-white/60";
+  return "border-white/10 bg-white/5 text-white/80";
 }
 
 export default async function PlayerPage({
@@ -285,6 +359,168 @@ export default async function PlayerPage({
     .sort((a, b) => new Date(b.events!.starts_at).getTime() - new Date(a.events!.starts_at).getTime())
     .slice(0, 3);
 
+  /* ===========================
+     Säsongshistorik (alla publicerade säsonger)
+  ============================ */
+  const allPersonSpResp = await sb
+    .from("season_players")
+    .select("id,season_id,person_id")
+    .eq("person_id", personId);
+
+  const personSeasonPlayers = (allPersonSpResp.data ?? []) as PersonSeasonPlayerRow[];
+  const allSeasonIds = Array.from(new Set(personSeasonPlayers.map((row) => String(row.season_id))));
+
+  let seasonHistoryCards: SeasonHistoryCard[] = [];
+
+  if (allSeasonIds.length) {
+    const [seasonMetaResp, allSeasonPlayersResp, seasonRulesResp, seasonEventsResp] = await Promise.all([
+      sb.from("seasons").select("id,name,created_at,is_published").in("id", allSeasonIds),
+      sb.from("season_players").select("id,season_id,person_id").in("season_id", allSeasonIds),
+      sb
+        .from("season_rules")
+        .select("season_id,vanlig_best_of,major_best_of,lagtavling_best_of")
+        .in("season_id", allSeasonIds),
+      sb
+        .from("events")
+        .select("id,season_id,event_type,locked,starts_at")
+        .in("season_id", allSeasonIds),
+    ]);
+
+    const publishedSeasons = ((seasonMetaResp.data ?? []) as SeasonMetaRow[]).filter(
+      (seasonMeta) => seasonMeta.is_published === true
+    );
+    const publishedSeasonIds = new Set(publishedSeasons.map((seasonMeta) => String(seasonMeta.id)));
+
+    const allSeasonPlayers = ((allSeasonPlayersResp.data ?? []) as PersonSeasonPlayerRow[]).filter((row) =>
+      publishedSeasonIds.has(String(row.season_id))
+    );
+    const allSeasonPlayerIds = allSeasonPlayers.map((row) => String(row.id));
+
+    let allSeasonResults: SeasonPlayerSummaryResultRow[] = [];
+    if (allSeasonPlayerIds.length) {
+      const allSeasonResultsResp = await sb
+        .from("results")
+        .select("season_player_id,event_id,poang,placering,did_not_play,events(id,season_id,event_type,locked)")
+        .in("season_player_id", allSeasonPlayerIds);
+
+      allSeasonResults = ((allSeasonResultsResp.data ?? []) as SeasonPlayerSummaryResultRespRow[]).map((row) => ({
+        ...row,
+        events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+      })) as SeasonPlayerSummaryResultRow[];
+    }
+
+    const seasonRulesBySeason = new Map<string, SeasonRuleRow>();
+    for (const rule of (seasonRulesResp.data ?? []) as SeasonRuleRow[]) {
+      seasonRulesBySeason.set(String(rule.season_id), rule);
+    }
+
+    const seasonEventsBySeason = new Map<string, SeasonEventRow[]>();
+    for (const event of (seasonEventsResp.data ?? []) as SeasonEventRow[]) {
+      if (!publishedSeasonIds.has(String(event.season_id))) continue;
+      const arr = seasonEventsBySeason.get(String(event.season_id)) ?? [];
+      arr.push(event);
+      seasonEventsBySeason.set(String(event.season_id), arr);
+    }
+
+    const resultsBySeasonPlayer = new Map<string, SeasonPlayerSummaryResultRow[]>();
+    for (const result of allSeasonResults) {
+      const arr = resultsBySeasonPlayer.get(String(result.season_player_id)) ?? [];
+      arr.push(result);
+      resultsBySeasonPlayer.set(String(result.season_player_id), arr);
+    }
+
+    seasonHistoryCards = publishedSeasons
+      .filter((seasonMeta) => personSeasonPlayers.some((row) => String(row.season_id) === String(seasonMeta.id)))
+      .map((seasonMeta) => {
+        const sid = String(seasonMeta.id);
+        const rulesForSeason = seasonRulesBySeason.get(sid) ?? {
+          season_id: sid,
+          vanlig_best_of: 4,
+          major_best_of: 3,
+          lagtavling_best_of: 2,
+        };
+
+        const playersInSeason = allSeasonPlayers.filter((row) => String(row.season_id) === sid);
+        const eventsInSeason = (seasonEventsBySeason.get(sid) ?? []).slice();
+        const lockedEvents = eventsInSeason.filter((event) => event.locked);
+        const finalEvent = lockedEvents.find((event) => event.event_type === "FINAL") ?? null;
+
+        const totals = playersInSeason.map((playerRow) => {
+          const bucket = { vanlig: [] as number[], major: [] as number[], lag: [] as number[] };
+          const playerResults = (resultsBySeasonPlayer.get(String(playerRow.id)) ?? []).filter(
+            (result) => result.events?.locked === true && result.did_not_play !== true
+          );
+
+          for (const result of playerResults) {
+            const eventType = String(result.events?.event_type ?? "");
+            const points = Number(result.poang ?? 0);
+            if (eventType === "VANLIG") bucket.vanlig.push(points);
+            else if (eventType === "MAJOR") bucket.major.push(points);
+            else if (eventType === "LAGTÄVLING") bucket.lag.push(points);
+          }
+
+          return {
+            id: String(playerRow.id),
+            total:
+              sumTopN(bucket.vanlig, Number(rulesForSeason.vanlig_best_of ?? 4)) +
+              sumTopN(bucket.major, Number(rulesForSeason.major_best_of ?? 3)) +
+              sumTopN(bucket.lag, Number(rulesForSeason.lagtavling_best_of ?? 2)),
+          };
+        });
+
+        const seriesRankById = rankFromTotals(totals);
+        const subjectSeasonPlayerIds = personSeasonPlayers
+          .filter((row) => String(row.season_id) === sid)
+          .map((row) => String(row.id));
+
+        const subjectResults = subjectSeasonPlayerIds.flatMap((seasonPlayerIdItem) =>
+          (resultsBySeasonPlayer.get(seasonPlayerIdItem) ?? []).filter((result) => result.events?.locked === true)
+        );
+
+        const wins = subjectResults.filter(
+          (result) => result.did_not_play !== true && Number(result.placering ?? 999) === 1
+        ).length;
+        const podiums = subjectResults.filter(
+          (result) =>
+            result.did_not_play !== true &&
+            typeof result.placering === "number" &&
+            result.placering >= 1 &&
+            result.placering <= 3
+        ).length;
+        const playedCount = subjectResults.filter((result) => result.did_not_play !== true).length;
+        const totalLockedEvents = lockedEvents.length;
+
+        const finalResult = finalEvent
+          ? subjectResults.find((result) => String(result.event_id) === String(finalEvent.id)) ?? null
+          : null;
+
+        const finalPlaceLabel = !finalEvent
+          ? "Pågår"
+          : !finalResult
+          ? "Ej final"
+          : finalResult.did_not_play
+          ? "DNS"
+          : typeof finalResult.placering === "number"
+          ? `#${finalResult.placering}`
+          : "Ej final";
+
+        const baseRank = seriesRankById.get(subjectSeasonPlayerIds[0] ?? "") ?? null;
+
+        return {
+          seasonId: sid,
+          seasonName: seasonMeta.name,
+          seasonYear: seasonYear(seasonMeta.name),
+          finalPlaceLabel,
+          finalPlaceTone: finalPlaceTone(finalPlaceLabel),
+          baseRankLabel: baseRank ? `#${baseRank}` : "—",
+          wins,
+          podiums,
+          participationLabel: `${playedCount}/${totalLockedEvents || 0} tävlingar`,
+        };
+      })
+      .sort((a, b) => b.seasonYear - a.seasonYear);
+  }
+
   return (
     <main className="space-y-6">
       <div className="flex items-center justify-between">
@@ -415,6 +651,67 @@ export default async function PlayerPage({
         </div>
       </section>
 
+      <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-lg font-semibold">Säsongshistorik</h2>
+          <span className="text-sm font-medium text-white/55">Alla säsonger</span>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {seasonHistoryCards.length ? (
+            seasonHistoryCards.map((seasonCard) => (
+              <div
+                key={seasonCard.seasonId}
+                className="rounded-2xl border border-white/10 bg-black/20 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-[0.18em] text-white/45">Säsong</div>
+                    <div className="mt-1 text-lg font-semibold leading-tight text-white break-words">
+                      {seasonCard.seasonName}
+                    </div>
+                  </div>
+
+                  <div className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${seasonCard.finalPlaceTone}`}>
+                    Final {seasonCard.finalPlaceLabel}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">Grundserie</div>
+                    <div className="mt-2 text-xl font-semibold text-white">{seasonCard.baseRankLabel}</div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">Deltagande</div>
+                    <div className="mt-2 text-xl font-semibold text-white">{seasonCard.participationLabel}</div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">Vinster</div>
+                    <div className="mt-2 text-xl font-semibold text-white">
+                      {seasonCard.wins.toLocaleString("sv-SE")}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">Pallplatser</div>
+                    <div className="mt-2 text-xl font-semibold text-white">
+                      {seasonCard.podiums.toLocaleString("sv-SE")}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-5 text-sm text-white/60">
+              Ingen säsongshistorik ännu.
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ✅ Profilinfo från admin */}
       {(person.bio || person.fun_facts || person.strengths || person.weaknesses) && (
         <section className="grid gap-4 md:grid-cols-2">
@@ -451,7 +748,10 @@ export default async function PlayerPage({
       {/* ✅ Troféskåp längst ner */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Troféskåp</h2>
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-lg font-semibold">Troféskåp</h2>
+            <span className="text-sm font-medium text-white/55">Alla säsonger</span>
+          </div>
           <div className="text-xs text-white/60"></div>
         </div>
 

@@ -121,6 +121,15 @@ type SummaryStatLine = {
   players: SummaryPerson[];
 };
 
+type FinalStandingRow = SummaryPerson & {
+  total: number;
+  baseRank: number;
+  finalPlace: number | null;
+  didNotPlay: boolean;
+  finalRank: number;
+  movement: number;
+};
+
 /* ===========================
    Helpers
 =========================== */
@@ -315,6 +324,38 @@ function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
         {row.playedByType.final}
       </div>
     </div>
+  );
+}
+
+function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: boolean }) {
+  if (didNotPlay) {
+    return (
+      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60">
+        DNS
+      </span>
+    );
+  }
+
+  if (movement > 0) {
+    return (
+      <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+        ↑ {movement}
+      </span>
+    );
+  }
+
+  if (movement < 0) {
+    return (
+      <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-200">
+        ↓ {Math.abs(movement)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60">
+      = 0
+    </span>
   );
 }
 
@@ -884,6 +925,55 @@ export default async function Page({
     }) as TopRow[];
   }
 
+  let finalStandings: FinalStandingRow[] = [];
+  if (seasonFinished && finalEvent) {
+    const baseRankByPersonId = new Map(leaderboard.map((row, index) => [row.person_id, index + 1]));
+    const seriesRowByPersonId = new Map(leaderboard.map((row) => [row.person_id, row]));
+
+    const finalRows = results
+      .filter((row) => row.event_id === finalEvent.id)
+      .map((row) => {
+        const meta = playerMeta.get(row.season_player_id);
+        if (!meta) return null;
+
+        const seriesRow = seriesRowByPersonId.get(meta.person_id);
+        if (!seriesRow) return null;
+
+        return {
+          person_id: meta.person_id,
+          name: meta.name,
+          avatar_url: meta.avatar_url,
+          total: seriesRow.total,
+          baseRank: baseRankByPersonId.get(meta.person_id) ?? leaderboard.length,
+          finalPlace: row.placering,
+          didNotPlay: row.did_not_play,
+          finalRank: 0,
+          movement: 0,
+        } satisfies FinalStandingRow;
+      })
+      .filter((row): row is FinalStandingRow => row !== null);
+
+    finalStandings = finalRows
+      .slice()
+      .sort((a, b) => {
+        const aStarted = !a.didNotPlay && typeof a.finalPlace === "number";
+        const bStarted = !b.didNotPlay && typeof b.finalPlace === "number";
+
+        if (aStarted !== bStarted) return aStarted ? -1 : 1;
+        if (aStarted && bStarted) return Number(a.finalPlace) - Number(b.finalPlace);
+        if (b.total !== a.total) return b.total - a.total;
+        return a.baseRank - b.baseRank;
+      })
+      .map((row, index) => {
+        const finalRank = index + 1;
+        return {
+          ...row,
+          finalRank,
+          movement: row.baseRank - finalRank,
+        };
+      });
+  }
+
   return (
     <main className="space-y-6">
       <section className="rounded-[32px] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6">
@@ -1078,23 +1168,54 @@ export default async function Page({
       {/* TOPP 5 */}
       <section className="space-y-2">
         <div className="flex items-end justify-between">
-          <h2 className="text-xl font-semibold">{seasonFinished ? "Slutställning grundserien" : "🏆 Topp 5"}</h2>
+          <h2 className="text-xl font-semibold">
+            {seasonFinished ? "Slutställning efter finalen" : "🏆 Topp 5"}
+          </h2>
           <div />
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-          {standingsRows.map((r, idx) => (
-            <div key={r.person_id} className="flex items-center justify-between border-b border-white/10 px-4 py-3 last:border-b-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 text-white/60">{idx + 1}</div>
-                <AvatarRound url={r.avatar_url} name={r.name} size={34} />
-                <Link href={`/players/${r.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">
-                  {r.name}
-                </Link>
-              </div>
-              <div className="font-semibold">{r.total.toLocaleString("sv-SE")}</div>
-            </div>
-          ))}
+          {seasonFinished
+            ? finalStandings.map((row) => (
+                <div
+                  key={row.person_id}
+                  className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="w-8 text-white/60">{row.finalRank}</div>
+                    <AvatarRound url={row.avatar_url} name={row.name} size={34} />
+                    <div className="min-w-0">
+                      <Link href={`/players/${row.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">
+                        {row.name}
+                      </Link>
+                      <div className="text-xs text-white/50">
+                        Grundserie #{row.baseRank}
+                        {row.didNotPlay ? " • DNS i finalen" : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-xs text-white/50">Poäng</div>
+                      <div className="font-semibold">{row.total.toLocaleString("sv-SE")}</div>
+                    </div>
+                    <MovementPill movement={row.movement} didNotPlay={row.didNotPlay} />
+                  </div>
+                </div>
+              ))
+            : standingsRows.map((r, idx) => (
+                <div key={r.person_id} className="flex items-center justify-between border-b border-white/10 px-4 py-3 last:border-b-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 text-white/60">{idx + 1}</div>
+                    <AvatarRound url={r.avatar_url} name={r.name} size={34} />
+                    <Link href={`/players/${r.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">
+                      {r.name}
+                    </Link>
+                  </div>
+                  <div className="font-semibold">{r.total.toLocaleString("sv-SE")}</div>
+                </div>
+              ))}
         </div>
       </section>
 

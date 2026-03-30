@@ -105,7 +105,6 @@ type SeasonHistoryCard = {
   seasonName: string;
   seasonYear: number;
   finalPlaceLabel: string;
-  finalPlaceTone: string;
   baseRankLabel: string;
   trophies: number;
   podiums: number;
@@ -206,15 +205,6 @@ function rankFromTotals(items: Array<{ id: string; total: number }>) {
   }
 
   return rankById;
-}
-
-function finalPlaceTone(label: string) {
-  if (label === "#1") return "border-amber-300/30 bg-amber-300/10 text-amber-100";
-  if (label === "#2") return "border-slate-300/30 bg-slate-300/10 text-slate-100";
-  if (label === "#3") return "border-orange-300/30 bg-orange-300/10 text-orange-100";
-  if (label === "DNS") return "border-red-400/20 bg-red-400/10 text-red-200";
-  if (label === "Ej final") return "border-white/10 bg-white/5 text-white/60";
-  return "border-white/10 bg-white/5 text-white/80";
 }
 
 export default async function PlayerPage({
@@ -518,7 +508,6 @@ export default async function PlayerPage({
           seasonName: seasonMeta.name,
           seasonYear: seasonYear(seasonMeta.name),
           finalPlaceLabel,
-          finalPlaceTone: finalPlaceTone(finalPlaceLabel),
           baseRankLabel: baseRank ? `Placering ${baseRank}` : "—",
           trophies: wins,
           podiums,
@@ -626,7 +615,7 @@ export default async function PlayerPage({
               const et = r.events!.event_type;
               const resultText =
                 et === "FINAL"
-                  ? `Adj ${r.adjusted_score ?? "—"}`
+                  ? `Net ${r.adjusted_score ?? "—"}`
                   : et === "LAGTÄVLING"
                   ? `Lag ${r.lag_score ?? "—"}`
                   : `Net ${r.net_strokes ?? "—"}`;
@@ -779,8 +768,8 @@ export default async function PlayerPage({
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div className={`rounded-xl border px-3 py-2 ${seasonCard.finalPlaceTone}`}>
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-current/70">Final</div>
+                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Final</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.finalPlaceLabel}</div>
                   </div>
                   <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">

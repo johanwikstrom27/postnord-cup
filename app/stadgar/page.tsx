@@ -4,6 +4,14 @@ export const revalidate = 0;
 
 import { supabaseServer } from "@/lib/supabase";
 import { resolvePublicSeason } from "@/lib/publicSeason";
+import {
+  DEFAULT_FINAL_START_SCORES,
+  DEFAULT_STADGAR_CONTENT,
+  interpolateTemplate,
+  parseBulletList,
+  parseParagraphs,
+  type StadgarContentFields,
+} from "@/lib/stadgarContent";
 
 type RulesRow = {
   vanlig_best_of: number | null;
@@ -12,7 +20,8 @@ type RulesRow = {
   hcp_zero_max?: number | null;
   hcp_two_max?: number | null;
   hcp_four_min?: number | null;
-};
+  final_start_scores?: number[] | null;
+} & StadgarContentFields;
 
 type SPRow = {
   id: string;
@@ -46,17 +55,6 @@ function pnHcpSlag(hcp: number, hcpZeroMax: number, hcpTwoMax: number, hcpFourMi
   if (hcp < hcpFourMin && hcp <= hcpTwoMax) return 2;
   return 4;
 }
-
-const FINAL_START_BY_RANK: { rank: number; start: number }[] = [
-  { rank: 1, start: -10 },
-  { rank: 2, start: -8 },
-  { rank: 3, start: -6 },
-  { rank: 4, start: -5 },
-  { rank: 5, start: -4 },
-  { rank: 6, start: -3 },
-  { rank: 7, start: -2 },
-  { rank: 8, start: -1 },
-];
 
 function pointsFallback(eventType: string): { placing: number; points: number }[] {
   if (eventType === "VANLIG") {
@@ -102,6 +100,14 @@ function pointsFallback(eventType: string): { placing: number; points: number }[
   ];
 }
 
+function textValue(value: string | null | undefined, fallback: string) {
+  return value ?? fallback;
+}
+
+function formatSigned(n: number) {
+  return n.toLocaleString("sv-SE");
+}
+
 export default async function StadgarPage({
   searchParams,
 }: {
@@ -115,7 +121,32 @@ export default async function StadgarPage({
   // Regler (best-of + HCP-gränser)
   const rulesResp = await sb
     .from("season_rules")
-    .select("vanlig_best_of,major_best_of,lagtavling_best_of,hcp_zero_max,hcp_two_max,hcp_four_min")
+    .select(`
+      vanlig_best_of,
+      major_best_of,
+      lagtavling_best_of,
+      hcp_zero_max,
+      hcp_two_max,
+      hcp_four_min,
+      final_start_scores,
+      stadgar_header_description,
+      stadgar_general_title,
+      stadgar_general_items,
+      stadgar_trackman_title,
+      stadgar_trackman_items,
+      stadgar_extra_title,
+      stadgar_extra_body,
+      stadgar_hcp_title,
+      stadgar_hcp_intro,
+      stadgar_final_title,
+      stadgar_final_intro,
+      stadgar_points_title,
+      stadgar_points_intro,
+      stadgar_regular_points_title,
+      stadgar_major_points_title,
+      stadgar_team_points_title,
+      stadgar_team_points_note
+    `)
     .eq("season_id", season.id)
     .single();
 
@@ -128,6 +159,54 @@ export default async function StadgarPage({
   const hcp0Max = Number(rules?.hcp_zero_max ?? 10.5);
   const hcp2Max = Number(rules?.hcp_two_max ?? 15.5);
   const hcp4Min = Number(rules?.hcp_four_min ?? 15.6);
+  const finalStartScores = Array.isArray(rules?.final_start_scores)
+    ? DEFAULT_FINAL_START_SCORES.map((fallback, index) => {
+        const value = Number(rules?.final_start_scores?.[index]);
+        return Number.isFinite(value) ? value : fallback;
+      })
+    : DEFAULT_FINAL_START_SCORES;
+  const finalRows = finalStartScores.slice(0, 8).map((start, index) => ({ rank: index + 1, start }));
+  const finalDefaultStart = finalStartScores[finalStartScores.length - 1] ?? 0;
+  const templateValues = {
+    vanlig_best_of: String(vanligBest),
+    major_best_of: String(majorBest),
+    lagtavling_best_of: String(lagBest),
+    hcp_zero_max: hcp0Max.toFixed(1),
+    hcp_zero_max_plus: (hcp0Max + 0.1).toFixed(1),
+    hcp_two_max: hcp2Max.toFixed(1),
+    hcp_four_min: hcp4Min.toFixed(1),
+    final_rank_1: formatSigned(finalStartScores[0] ?? DEFAULT_FINAL_START_SCORES[0]),
+    final_rank_1_with_two: formatSigned((finalStartScores[0] ?? DEFAULT_FINAL_START_SCORES[0]) - 2),
+  };
+  const content = {
+    stadgar_header_description: textValue(rules?.stadgar_header_description, DEFAULT_STADGAR_CONTENT.stadgar_header_description),
+    stadgar_general_title: textValue(rules?.stadgar_general_title, DEFAULT_STADGAR_CONTENT.stadgar_general_title),
+    stadgar_general_items: textValue(rules?.stadgar_general_items, DEFAULT_STADGAR_CONTENT.stadgar_general_items),
+    stadgar_trackman_title: textValue(rules?.stadgar_trackman_title, DEFAULT_STADGAR_CONTENT.stadgar_trackman_title),
+    stadgar_trackman_items: textValue(rules?.stadgar_trackman_items, DEFAULT_STADGAR_CONTENT.stadgar_trackman_items),
+    stadgar_extra_title: textValue(rules?.stadgar_extra_title, DEFAULT_STADGAR_CONTENT.stadgar_extra_title),
+    stadgar_extra_body: textValue(rules?.stadgar_extra_body, DEFAULT_STADGAR_CONTENT.stadgar_extra_body),
+    stadgar_hcp_title: textValue(rules?.stadgar_hcp_title, DEFAULT_STADGAR_CONTENT.stadgar_hcp_title),
+    stadgar_hcp_intro: textValue(rules?.stadgar_hcp_intro, DEFAULT_STADGAR_CONTENT.stadgar_hcp_intro),
+    stadgar_final_title: textValue(rules?.stadgar_final_title, DEFAULT_STADGAR_CONTENT.stadgar_final_title),
+    stadgar_final_intro: textValue(rules?.stadgar_final_intro, DEFAULT_STADGAR_CONTENT.stadgar_final_intro),
+    stadgar_points_title: textValue(rules?.stadgar_points_title, DEFAULT_STADGAR_CONTENT.stadgar_points_title),
+    stadgar_points_intro: textValue(rules?.stadgar_points_intro, DEFAULT_STADGAR_CONTENT.stadgar_points_intro),
+    stadgar_regular_points_title: textValue(
+      rules?.stadgar_regular_points_title,
+      DEFAULT_STADGAR_CONTENT.stadgar_regular_points_title
+    ),
+    stadgar_major_points_title: textValue(rules?.stadgar_major_points_title, DEFAULT_STADGAR_CONTENT.stadgar_major_points_title),
+    stadgar_team_points_title: textValue(rules?.stadgar_team_points_title, DEFAULT_STADGAR_CONTENT.stadgar_team_points_title),
+    stadgar_team_points_note: textValue(rules?.stadgar_team_points_note, DEFAULT_STADGAR_CONTENT.stadgar_team_points_note),
+  } satisfies Record<keyof StadgarContentFields, string>;
+  const headerParagraphs = parseParagraphs(interpolateTemplate(content.stadgar_header_description, templateValues));
+  const generalItems = parseBulletList(interpolateTemplate(content.stadgar_general_items, templateValues));
+  const trackmanItems = parseBulletList(interpolateTemplate(content.stadgar_trackman_items, templateValues));
+  const hcpIntroParagraphs = parseParagraphs(interpolateTemplate(content.stadgar_hcp_intro, templateValues));
+  const finalIntroParagraphs = parseParagraphs(interpolateTemplate(content.stadgar_final_intro, templateValues));
+  const pointsIntroParagraphs = parseParagraphs(interpolateTemplate(content.stadgar_points_intro, templateValues));
+  const extraParagraphs = parseParagraphs(interpolateTemplate(content.stadgar_extra_body, templateValues));
 
   // Spelare
   const spResp = await sb
@@ -172,44 +251,52 @@ export default async function StadgarPage({
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
         <div className="text-sm text-white/60">Stadgar</div>
         <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">{season.name}</h1>
-        <div className="mt-2 text-white/60">
-          Sammanställning av regler, HCP/PN-HCP, finalens startscore och poängfördelning.
+        <div className="mt-2 space-y-2 text-white/60">
+          {headerParagraphs.map((paragraph, index) => (
+            <p key={`header-${index}`}>{paragraph}</p>
+          ))}
         </div>
       </section>
 
       {/* Stadgar */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-xl font-semibold">Stadgar</h2>
-        <ul className="mt-3 space-y-2 text-white/80 list-disc pl-5">
-          <li>Alla är inbjudna till varje tävling.</li>
-          <li>Vid utebliven närvaro delas inga poäng ut för spelaren.</li>
-          <li>Av de vanliga tävlingarna räknas endast de bästa {vanligBest} av 6 möjliga.</li>
-          <li>Av major-tävlingarna räknas endast de bästa {majorBest} av 4 möjliga.</li>
-          <li>
-            Av lagtävlingarna (2v2) räknas de bästa {lagBest} av 2 möjliga. Lagen <b>slumpas</b> till dessa tävlingar.
-          </li>
-          <li>Vid delad förstaplats i någon tävling blir det särspel (puttävling, bäst av 3).</li>
-          <li>Vid oavgjort på andra placeringar får båda spelarna den högre poängen.</li>
-          <li>Maximalt 14 klubbor i bagen.</li>
-        </ul>
+        {content.stadgar_general_title ? <h2 className="text-xl font-semibold">{content.stadgar_general_title}</h2> : null}
+        {generalItems.length ? (
+          <ul className="mt-3 space-y-2 text-white/80 list-disc pl-5">
+            {generalItems.map((item, index) => (
+              <li key={`general-${index}`}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
 
-        <h3 className="mt-6 text-lg font-semibold">Trackmanregler</h3>
-        <ul className="mt-3 space-y-2 text-white/80 list-disc pl-5">
-          <li>Samtliga tävlingar spelas med puttning: Auto – Fixed.</li>
-          <li>Inga mulligans.</li>
-          <li>Slår man en socket som ej registreras måste man visa tacksamhet.</li>
-          <li>Samtliga spelare väljer tees, pins &amp; vind enligt fliken för aktuella tävlingen.</li>
-        </ul>
+        {content.stadgar_trackman_title ? <h3 className="mt-6 text-lg font-semibold">{content.stadgar_trackman_title}</h3> : null}
+        {trackmanItems.length ? (
+          <ul className="mt-3 space-y-2 text-white/80 list-disc pl-5">
+            {trackmanItems.map((item, index) => (
+              <li key={`trackman-${index}`}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
       </section>
+
+      {content.stadgar_extra_title || extraParagraphs.length ? (
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
+          {content.stadgar_extra_title ? <h2 className="text-xl font-semibold">{content.stadgar_extra_title}</h2> : null}
+          <div className="mt-3 space-y-3 text-white/80">
+            {extraParagraphs.map((paragraph, index) => (
+              <p key={`extra-${index}`}>{paragraph}</p>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Spelare & PN-HCP */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-xl font-semibold">Spelare &amp; PN-HCP</h2>
-        <div className="mt-2 text-white/60 text-sm">
-          PN-HCP = antal slag per tävling enligt säsongens HCP-gränser:
-          <span className="ml-2 whitespace-nowrap">0–{hcp0Max.toFixed(1)} ⇒ 0 slag</span>,{" "}
-          <span className="whitespace-nowrap">{(hcp0Max + 0.1).toFixed(1)}–{hcp2Max.toFixed(1)} ⇒ 2 slag</span>,{" "}
-          <span className="whitespace-nowrap">{hcp4Min.toFixed(1)}+ ⇒ 4 slag</span>.
+        {content.stadgar_hcp_title ? <h2 className="text-xl font-semibold">{content.stadgar_hcp_title}</h2> : null}
+        <div className="mt-2 space-y-2 text-sm text-white/60">
+          {hcpIntroParagraphs.map((paragraph, index) => (
+            <p key={`hcp-${index}`}>{paragraph}</p>
+          ))}
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -247,10 +334,11 @@ export default async function StadgarPage({
 
       {/* Final startscore */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-xl font-semibold">Startscore inför Final</h2>
-        <div className="mt-2 text-white/60 text-sm">
-          <div>Startscore = Serieplacering inkl. PN-HCP (0/2/4 slag).</div>
-          <div>T.ex. 1:an startar på -10 och om PN-HCP är 2 slag = Startscore -12.</div>
+        {content.stadgar_final_title ? <h2 className="text-xl font-semibold">{content.stadgar_final_title}</h2> : null}
+        <div className="mt-2 space-y-2 text-sm text-white/60">
+          {finalIntroParagraphs.map((paragraph, index) => (
+            <p key={`final-${index}`}>{paragraph}</p>
+          ))}
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -262,7 +350,7 @@ export default async function StadgarPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {FINAL_START_BY_RANK.map((r) => (
+              {finalRows.map((r) => (
                 <tr key={r.rank}>
                   <td className="px-3 py-2">#{r.rank}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.start}</td>
@@ -270,7 +358,7 @@ export default async function StadgarPage({
               ))}
               <tr>
                 <td className="px-3 py-2">#9–#12</td>
-                <td className="px-3 py-2 text-right tabular-nums">0</td>
+                <td className="px-3 py-2 text-right tabular-nums">{finalDefaultStart}</td>
               </tr>
             </tbody>
           </table>
@@ -279,17 +367,17 @@ export default async function StadgarPage({
 
       {/* Poängfördelning */}
       <section className="rounded-2xl border border-white/10 bg-white/5 p-6">
-        <h2 className="text-xl font-semibold">Poängfördelning</h2>
-        <div className="mt-2 text-white/60 text-sm">
-          I varje tävling koras en vinnare, direkt eller via särspel. T.ex. tre spelare delar bästa nettoscore,
-          särspel avgör plats nr 1 och övriga två spelare tilldelas poängen för plats nr 2. Fjärde bästa spelaren
-          tilldelas plats nr 4 och poäng därefter.
+        {content.stadgar_points_title ? <h2 className="text-xl font-semibold">{content.stadgar_points_title}</h2> : null}
+        <div className="mt-2 space-y-2 text-sm text-white/60">
+          {pointsIntroParagraphs.map((paragraph, index) => (
+            <p key={`points-${index}`}>{paragraph}</p>
+          ))}
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {/* Vanlig */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="font-semibold">PostNord Cup-tävlingar (Vanlig)</div>
+            <div className="font-semibold">{content.stadgar_regular_points_title}</div>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-white/60">
@@ -312,7 +400,7 @@ export default async function StadgarPage({
 
           {/* Major */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="font-semibold">Major-tävlingar</div>
+            <div className="font-semibold">{content.stadgar_major_points_title}</div>
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-white/60">
@@ -335,8 +423,8 @@ export default async function StadgarPage({
 
           {/* Lagtävling */}
           <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="font-semibold">Lagtävling (2v2)</div>
-            <div className="mt-1 text-xs text-white/60">Poäng per spelare i laget.</div>
+            <div className="font-semibold">{content.stadgar_team_points_title}</div>
+            {content.stadgar_team_points_note ? <div className="mt-1 text-xs text-white/60">{content.stadgar_team_points_note}</div> : null}
             <div className="mt-3 overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-white/60">

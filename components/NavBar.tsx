@@ -17,7 +17,7 @@ const LINKS = [
   { href: "/history", label: "Historik" },
 ];
 
-const SEASON_AWARE_LINKS = new Set(["/", "/overview", "/leaderboard", "/events", "/players", "/stadgar"]);
+const SEASON_AWARE_LINKS = new Set(["/", "/overview", "/leaderboard", "/events", "/players", "/wheel", "/stadgar"]);
 
 type SeasonOption = {
   id: string;

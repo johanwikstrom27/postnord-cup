@@ -19,10 +19,15 @@ type PlayerRespRow = {
   people: PersonRow | PersonRow[] | null;
 };
 
-export default async function WheelPage() {
+export default async function WheelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   const sb = supabaseServer();
+  const sp = await searchParams;
 
-  const season = await resolvePublicSeason(sb, null);
+  const season = await resolvePublicSeason(sb, sp?.season ?? null);
   const seasonId = season?.id;
 
   if (!seasonId) {

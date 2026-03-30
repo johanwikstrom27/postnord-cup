@@ -250,6 +250,12 @@ export default async function HistoryPage() {
 
                 <div className="mt-5 flex flex-wrap gap-2">
                   <Link
+                    href={`/${seasonQuery}`}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  >
+                    Hem →
+                  </Link>
+                  <Link
                     href={`/leaderboard${seasonQuery}`}
                     className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
                   >

@@ -1,0 +1,18 @@
+alter table public.season_rules
+  add column if not exists stadgar_header_description text,
+  add column if not exists stadgar_general_title text,
+  add column if not exists stadgar_general_items text,
+  add column if not exists stadgar_trackman_title text,
+  add column if not exists stadgar_trackman_items text,
+  add column if not exists stadgar_extra_title text,
+  add column if not exists stadgar_extra_body text,
+  add column if not exists stadgar_hcp_title text,
+  add column if not exists stadgar_hcp_intro text,
+  add column if not exists stadgar_final_title text,
+  add column if not exists stadgar_final_intro text,
+  add column if not exists stadgar_points_title text,
+  add column if not exists stadgar_points_intro text,
+  add column if not exists stadgar_regular_points_title text,
+  add column if not exists stadgar_major_points_title text,
+  add column if not exists stadgar_team_points_title text,
+  add column if not exists stadgar_team_points_note text;

@@ -121,7 +121,7 @@ export default function AdminFinalEventForm({
         return;
       }
 
-      setMsg("Sparat ✅ Granska adjusted score och placering innan du låser.");
+      setMsg("Sparat ✅ Granska net score och placering innan du låser.");
       setBusy(false);
     } catch (error: unknown) {
       setMsg(`Fel: ${getErrorMessage(error)}`);
@@ -134,7 +134,7 @@ export default function AdminFinalEventForm({
       <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-white/70">
         <div className="text-xs uppercase tracking-[0.28em] text-white/45">Final</div>
         <p className="mt-3 leading-6">
-          Mata in bruttoslag. Adjusted score räknas automatiskt som <strong>Brutto − HCP + Start</strong>,
+          Mata in bruttoslag. Net score räknas automatiskt som <strong>Brutto − HCP + Start</strong>,
           och används tillsammans med särspel för att avgöra finalen.
         </p>
       </div>
@@ -290,7 +290,7 @@ export default function AdminFinalEventForm({
                       <div className="mt-1 text-lg font-semibold text-white">{row.startScore ?? "—"}</div>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Adjusted</div>
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Net</div>
                       <div className="mt-1 text-lg font-semibold text-white">{row.adjustedScore ?? "—"}</div>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
@@ -310,7 +310,7 @@ export default function AdminFinalEventForm({
           <div>
             <div className="text-sm font-semibold text-white">Finalen sparas som utkast först</div>
             <p className="mt-1 text-sm text-white/55">
-              När du låser får du en sista kontrollvy så att pallen och adjusted score är rätt.
+              När du låser får du en sista kontrollvy så att pallen och net score är rätt.
             </p>
           </div>
 
@@ -396,7 +396,7 @@ export default function AdminFinalEventForm({
                     <div className="mt-1 text-lg font-semibold text-white">{row.startScore ?? "—"}</div>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Adjusted</div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Net</div>
                     <div className="mt-1 text-lg font-semibold text-white">{row.adjustedScore ?? "—"}</div>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">

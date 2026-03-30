@@ -185,6 +185,7 @@ function MiniCard({
   sub,
   thumb,
   children,
+  compact = false,
 }: {
   href: string;
   kicker: string;
@@ -192,21 +193,22 @@ function MiniCard({
   sub?: string | null;
   thumb: React.ReactNode;
   children?: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="group block rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
+      className="group block min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
       title={title}
     >
-      <div className="flex h-[120px] items-stretch gap-4 p-4">
+      <div className={`flex min-w-0 items-start gap-4 p-4 ${compact ? "min-h-[120px]" : "min-h-[132px]"}`}>
         <div className="min-w-0 flex-1">
           <div className="text-[10px] text-white/60">{kicker}</div>
-          <div className="mt-1 text-sm font-semibold leading-snug overflow-hidden">{title}</div>
-          {sub ? <div className="mt-1 text-[10px] text-white/60 truncate">{sub}</div> : null}
+          <div className="mt-1 text-[15px] font-semibold leading-snug break-words">{title}</div>
+          {sub ? <div className="mt-1 text-[11px] leading-snug text-white/60 break-words">{sub}</div> : null}
           {children ? <div className="mt-2">{children}</div> : null}
         </div>
-        <div className="flex items-center">{thumb}</div>
+        <div className="flex shrink-0 items-start pt-1">{thumb}</div>
       </div>
     </Link>
   );
@@ -224,23 +226,26 @@ function StatsMiniCard({
   return (
     <Link
       href={href}
-      className="group block rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
+      className="group block min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black/20 hover:bg-black/30 transition"
       title="Säsongsstatistik"
     >
-      <div className="flex h-[120px] flex-col justify-between p-4">
+      <div className="flex min-h-[132px] flex-col justify-between p-4">
         <div>
           <div className="text-[10px] text-white/60">Säsongsstatistik</div>
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-2 space-y-2">
             {lines.map((line) => (
-              <div key={line.label} className="flex items-baseline justify-between gap-3 text-[11px] leading-tight">
-                <span className="text-white/60">{line.label}</span>
-                <span className="truncate text-right font-medium text-white/90">{line.value}</span>
+              <div
+                key={line.label}
+                className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] items-start gap-x-3 text-[11px] leading-tight"
+              >
+                <span className="text-white/60 break-words">{line.label}</span>
+                <span className="min-w-0 break-words font-medium text-white/90">{line.value}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {footer ? <div className="text-[10px] text-white/45">{footer}</div> : null}
+        {footer ? <div className="mt-3 text-[10px] leading-snug text-white/45 break-words">{footer}</div> : null}
       </div>
     </Link>
   );
@@ -465,14 +470,6 @@ export default async function Page({
           { label: "Flest pallplatser", value: `${fmtNames(mostPodiumPlayers.map((p) => p.name))} • ${mostPodiums}` },
         ];
 
-  const summaryBits = [
-    `${lockedEvents.length} spelade tävlingar`,
-    `${players.length} spelare`,
-    fullAttendancePlayers.length > 0
-      ? `${fmtNames(fullAttendancePlayers.map((p) => p.name))} stod för full närvaro`
-      : `${fmtNames(mostStartPlayers.map((p) => p.name))} var närmast full närvaro`,
-  ];
-
   // top3 last played
   let top3: TopRow[] = [];
   if (lastPlayed) {
@@ -532,7 +529,7 @@ export default async function Page({
               kicker="Säsongens mästare"
               title={finalWinner.name}
               sub={`Vann ${finalEvent?.name ?? "PostNord Cup Final"}${finalEvent?.course ? ` • ${finalEvent.course}` : ""}`}
-              thumb={<AvatarRound url={finalWinner.avatar_url} name={finalWinner.name} size={56} />}
+              thumb={<AvatarRound url={finalWinner.avatar_url} name={finalWinner.name} size={50} />}
             />
           ) : (
             <>
@@ -542,7 +539,7 @@ export default async function Page({
                   kicker="Ledare"
                   title={leader.name}
                   sub={`${leader.total.toLocaleString("sv-SE")} p`}
-                  thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={56} />}
+                  thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={50} />}
                 />
               ) : (
                 <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
@@ -593,7 +590,8 @@ export default async function Page({
                 kicker="Vinnare av grundserien"
                 title={leader.name}
                 sub={`${leader.total.toLocaleString("sv-SE")} p i slutställningen`}
-                thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={56} />}
+                thumb={<AvatarRound url={leader.avatar_url} name={leader.name} size={50} />}
+                compact
               />
             ) : (
               <div className="h-[120px] rounded-2xl border border-white/10 bg-black/20 p-4 text-white/60">
@@ -613,52 +611,6 @@ export default async function Page({
           ) : null}
         </div>
       </section>
-
-      {seasonFinished && finalWinner && finalEvent ? (
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="text-xs text-white/60">Säsongssummering</div>
-              <h2 className="mt-1 text-xl font-semibold">
-                {finalWinner.name} är säsongens mästare i {season.name}
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm text-white/70">
-                {finalWinner.name} tog hem {finalEvent.name}
-                {finalEvent.course ? ` på ${finalEvent.course}` : ""}. {leader ? `${leader.name} vann grundserien på ${leader.total.toLocaleString("sv-SE")} poäng.` : ""}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 text-[11px] text-white/70">
-              {summaryBits.map((bit) => (
-                <span key={bit} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5">
-                  {bit}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href={`/events/${finalEvent.id}${seasonQuery}`}
-              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
-            >
-              Se finalresultatet →
-            </Link>
-            <Link
-              href={`/leaderboard${seasonQuery}`}
-              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
-            >
-              Se slutställningen →
-            </Link>
-            <Link
-              href="/history"
-              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm hover:bg-black/30"
-            >
-              Till historik →
-            </Link>
-          </div>
-        </section>
-      ) : null}
 
       {/* TOPP 5 */}
       <section className="space-y-2">

@@ -106,6 +106,13 @@ type LeaderboardRow = SummaryPerson & {
   played: number;
   wins: number;
   podiums: number;
+  playedByType: {
+    vanlig: number;
+    major: number;
+    lag: number;
+    final: number;
+  };
+  avgPlace: number | null;
 };
 
 type SummaryStatLine = {
@@ -269,11 +276,23 @@ function FacePile({
   );
 }
 
-function FactTile({ label, value }: { label: string; value: string }) {
+function FactTile({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{label}</div>
       <div className="mt-2 text-sm font-medium leading-snug text-white/90 break-words sm:text-base">{value}</div>
+    </div>
+  );
+}
+
+function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
+  return (
+    <div className="space-y-1">
+      <div>{row.played.toLocaleString("sv-SE")} tävlingar</div>
+      <div className="text-xs text-white/65">
+        Vanlig {row.playedByType.vanlig} • Major {row.playedByType.major} • Lag {row.playedByType.lag} • Final{" "}
+        {row.playedByType.final}
+      </div>
     </div>
   );
 }
@@ -383,7 +402,7 @@ function podiumSymbol(placing: number) {
   if (placing === 1) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/icons/final.png" alt="Pokalen" className="h-28 w-28 object-contain sm:h-32 sm:w-32" />
+      <img src="/icons/final-1.png" alt="Pokalen" className="h-28 w-28 object-contain sm:h-32 sm:w-32" />
     );
   }
   if (placing === 2) return <span className="text-4xl leading-none sm:text-5xl">🥈</span>;
@@ -474,11 +493,11 @@ function FinishedPodiumSection({
                   </div>
 
                   <div
-                    className={`mt-4 flex w-full items-end justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${podiumHeight(
+                    className={`mt-4 flex w-full items-start justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${podiumHeight(
                       place
                     )} ${podiumTone(place)}`}
                   >
-                    <div>
+                    <div className="pt-1">
                       <div className="flex items-center justify-center">{podiumSymbol(place)}</div>
                     </div>
                   </div>
@@ -673,8 +692,33 @@ export default async function Page({
     ])
   );
 
-  const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[]; played: number; wins: number; podiums: number }>();
-  for (const p of players) bySp.set(p.id, { vanlig: [], major: [], lag: [], played: 0, wins: 0, podiums: 0 });
+  const bySp = new Map<
+    string,
+    {
+      vanlig: number[];
+      major: number[];
+      lag: number[];
+      played: number;
+      wins: number;
+      podiums: number;
+      playedByType: { vanlig: number; major: number; lag: number; final: number };
+      placeSum: number;
+      placeCount: number;
+    }
+  >();
+  for (const p of players) {
+    bySp.set(p.id, {
+      vanlig: [],
+      major: [],
+      lag: [],
+      played: 0,
+      wins: 0,
+      podiums: 0,
+      playedByType: { vanlig: 0, major: 0, lag: 0, final: 0 },
+      placeSum: 0,
+      placeCount: 0,
+    });
+  }
 
   for (const r of results) {
     if (r.did_not_play) continue;
@@ -683,8 +727,16 @@ export default async function Page({
     if (!t || !b) continue;
 
     b.played += 1;
+    if (t === "VANLIG") b.playedByType.vanlig += 1;
+    else if (t === "MAJOR") b.playedByType.major += 1;
+    else if (t === "LAGTÄVLING") b.playedByType.lag += 1;
+    else if (t === "FINAL") b.playedByType.final += 1;
     if (r.placering === 1) b.wins += 1;
     if (typeof r.placering === "number" && r.placering <= 3) b.podiums += 1;
+    if (typeof r.placering === "number") {
+      b.placeSum += r.placering;
+      b.placeCount += 1;
+    }
 
     const pts = Number(r.poang ?? 0);
     if (t === "VANLIG") b.vanlig.push(pts);
@@ -707,6 +759,8 @@ export default async function Page({
         played: b.played,
         wins: b.wins,
         podiums: b.podiums,
+        playedByType: b.playedByType,
+        avgPlace: b.placeCount > 0 ? b.placeSum / b.placeCount : null,
       };
     })
     .sort((a, b) => b.total - a.total);
@@ -859,8 +913,13 @@ export default async function Page({
                 person={leader}
                 className="lg:col-span-2"
               >
-                <FactTile label="Spelade" value={`${leader.played.toLocaleString("sv-SE")} tävlingar`} />
+                <FactTile label="Spelade" value={<PlayedBreakdown row={leader} />} />
                 <FactTile label="Pokaler" value={`${leader.wins.toLocaleString("sv-SE")} vinster`} />
+                <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
+                <FactTile
+                  label="Snittplacering"
+                  value={leader.avgPlace != null ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "—"}
+                />
               </FinishedHighlightCard>
             ) : (
               <>
@@ -871,13 +930,22 @@ export default async function Page({
                   subtitle={`Vann ${finalEvent.name}`}
                   person={finalWinner}
                 >
-                  <FactTile
-                    label="Spelade"
-                    value={`${(finalWinnerStats?.played ?? 0).toLocaleString("sv-SE")} tävlingar`}
-                  />
+                  <FactTile label="Spelade" value={finalWinnerStats ? <PlayedBreakdown row={finalWinnerStats} /> : "—"} />
                   <FactTile
                     label="Pokaler"
                     value={`${(finalWinnerStats?.wins ?? 0).toLocaleString("sv-SE")} vinster`}
+                  />
+                  <FactTile
+                    label="Pallplatser"
+                    value={`${(finalWinnerStats?.podiums ?? 0).toLocaleString("sv-SE")} totalt`}
+                  />
+                  <FactTile
+                    label="Snittplacering"
+                    value={
+                      finalWinnerStats?.avgPlace != null
+                        ? finalWinnerStats.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 })
+                        : "—"
+                    }
                   />
                 </FinishedHighlightCard>
 
@@ -889,8 +957,13 @@ export default async function Page({
                     subtitle={`${leader.total.toLocaleString("sv-SE")} poäng i slutställningen`}
                     person={leader}
                   >
-                    <FactTile label="Spelade" value={`${leader.played.toLocaleString("sv-SE")} tävlingar`} />
+                    <FactTile label="Spelade" value={<PlayedBreakdown row={leader} />} />
+                    <FactTile label="Pokaler" value={`${leader.wins.toLocaleString("sv-SE")} vinster`} />
                     <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
+                    <FactTile
+                      label="Snittplacering"
+                      value={leader.avgPlace != null ? leader.avgPlace.toLocaleString("sv-SE", { maximumFractionDigits: 1 }) : "—"}
+                    />
                   </FinishedHighlightCard>
                 ) : (
                   <div className="rounded-[28px] border border-white/10 bg-black/20 p-5 text-white/60 sm:p-6">

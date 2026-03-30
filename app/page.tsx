@@ -252,7 +252,7 @@ function FacePile({
   const remaining = players.length - visible.length;
 
   return (
-    <div className="flex items-center">
+    <div className="flex h-full items-center">
       <div className="flex -space-x-2">
         {visible.map((player) => (
           <div
@@ -339,8 +339,13 @@ function FinishedStatsCard({
 
         <div className="mt-5 space-y-4">
           {lines.map((line) => (
-            <div key={line.label} className="flex min-w-0 items-start gap-3">
-              <FacePile players={line.players} />
+            <div
+              key={line.label}
+              className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-start gap-x-4"
+            >
+              <div className="flex min-h-[52px] items-center">
+                <FacePile players={line.players} />
+              </div>
               <div className="min-w-0">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-white/45">{line.label}</div>
                 <div className="mt-1 text-sm font-medium leading-snug text-white/90 break-words">{line.value}</div>
@@ -352,56 +357,6 @@ function FinishedStatsCard({
         <div className="mt-auto pt-5 text-xs text-white/45 break-words">{footer}</div>
       </div>
     </Link>
-  );
-}
-
-function FinishedSeasonFactsCard({
-  finalEvent,
-  playedEventCount,
-  playerCount,
-  seasonQuery,
-}: {
-  finalEvent: EventRow | null;
-  playedEventCount: number;
-  playerCount: number;
-  seasonQuery: string;
-}) {
-  return (
-    <div className="overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(10,14,24,0.85))]">
-      <div className="flex min-h-[220px] flex-col p-5 sm:p-6">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">Säsongen i siffror</div>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <FactTile label="Tävlingar" value={playedEventCount.toLocaleString("sv-SE")} />
-          <FactTile label="Deltagare" value={playerCount.toLocaleString("sv-SE")} />
-          <FactTile label="Avgjord" value={finalEvent ? fmtDateShort(finalEvent.starts_at) : "—"} />
-          <FactTile label="Finalbana" value={finalEvent?.course ?? "—"} />
-        </div>
-
-        <div className="mt-auto flex flex-wrap gap-2 pt-5">
-          {finalEvent ? (
-            <Link
-              href={`/events/${finalEvent.id}${seasonQuery}`}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-            >
-              Finalresultat →
-            </Link>
-          ) : null}
-          <Link
-            href={`/leaderboard${seasonQuery}`}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-          >
-            Slutställning →
-          </Link>
-          <Link
-            href={`/overview${seasonQuery}`}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-          >
-            Överblick →
-          </Link>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -417,6 +372,17 @@ function podiumMetaForRow(row: TopRow, eventType: string) {
 
   const pts = Number(row.poang ?? 0);
   return pts > 0 ? `${strokes ?? "—"} slag • ${pts.toLocaleString("sv-SE")} p` : `${strokes ?? "—"} slag`;
+}
+
+function podiumSymbol(placing: number) {
+  if (placing === 1) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/icons/final.png" alt="Pokalen" className="h-14 w-14 object-contain sm:h-16 sm:w-16" />
+    );
+  }
+  if (placing === 2) return <span className="text-5xl leading-none sm:text-6xl">🥈</span>;
+  return <span className="text-5xl leading-none sm:text-6xl">🥉</span>;
 }
 
 function FinishedPodiumSection({
@@ -447,9 +413,8 @@ function FinishedPodiumSection({
       <div className="relative p-5 sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Finalpallen</div>
-            <div className="mt-2 text-2xl font-semibold leading-tight break-words sm:text-3xl">{event.name}</div>
-            <div className="mt-2 text-sm text-white/60 break-words">
+            <div className="text-2xl font-semibold leading-tight break-words sm:text-3xl">{event.name}</div>
+            <div className="mt-3 text-sm text-white/60 break-words">
               {fmtDateShort(event.starts_at)}
             </div>
             {event.course ? <div className="text-sm text-white/60 break-words">{event.course}</div> : null}
@@ -485,19 +450,7 @@ function FinishedPodiumSection({
                 href={personId ? `/players/${personId}${seasonQuery}` : "#"}
                 className="group block min-w-0"
               >
-                <div className="flex min-h-[220px] flex-col items-center rounded-[24px] border border-white/10 bg-black/20 px-2 pb-0 pt-4 text-center transition hover:bg-black/30 sm:px-4">
-                  <div className="mb-3 flex min-h-9 flex-wrap items-center justify-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-lg">
-                      {medalForPlacing(place)}
-                    </div>
-                    {place === 1 ? (
-                      <div className="flex items-center gap-1 rounded-full border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/icons/final.png" alt="Finalpokal" className="h-4 w-4 object-contain" />
-                        Pokalen
-                      </div>
-                    ) : null}
-                  </div>
+                <div className="flex min-h-[220px] flex-col items-center px-2 pb-0 pt-4 text-center sm:px-4">
                   <AvatarRound url={avatar} name={name} size={place === 1 ? 72 : 58} />
 
                   <div className="mt-3 min-w-0">
@@ -513,8 +466,7 @@ function FinishedPodiumSection({
                     )} ${podiumTone(place)}`}
                   >
                     <div>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-white/45">Plats</div>
-                      <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">{place}</div>
+                      <div className="flex items-center justify-center">{podiumSymbol(place)}</div>
                     </div>
                   </div>
                 </div>
@@ -881,7 +833,7 @@ export default async function Page({
         <>
           <FinishedPodiumSection event={finalEvent} rows={top3} seasonQuery={seasonQuery} />
 
-          <section className="grid gap-4 lg:grid-cols-2">
+          <section className="grid gap-4 lg:grid-cols-3">
             <FinishedHighlightCard
               href={`/events/${finalEvent.id}${seasonQuery}`}
               kicker="Säsongens mästare"
@@ -914,13 +866,6 @@ export default async function Page({
               href={`/overview${seasonQuery}`}
               lines={statsLines}
               footer={`${playedEventCount.toLocaleString("sv-SE")} tävlingar - ${players.length.toLocaleString("sv-SE")} deltagare`}
-            />
-
-            <FinishedSeasonFactsCard
-              finalEvent={finalEvent}
-              playedEventCount={playedEventCount}
-              playerCount={players.length}
-              seasonQuery={seasonQuery}
             />
           </section>
         </>

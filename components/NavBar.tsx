@@ -143,13 +143,13 @@ export default function NavBar() {
       <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-gradient-to-r from-[#0b1020]/80 to-[#0b1626]/80 backdrop-blur-xl shadow-lg">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           {/* Brand */}
-          <Link href={hrefFor("/")} className="flex min-w-0 flex-1 items-center gap-2.5 pr-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5 sm:h-10 sm:w-10">
+          <Link href={hrefFor("/")} className="flex min-w-0 flex-1 items-center gap-3 pr-2">
+            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-visible sm:h-20 sm:w-20">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/icons/pncuplogga-v4.png"
                 alt="PostNord Cup"
-                className="max-h-7 max-w-7 object-contain sm:max-h-8 sm:max-w-8"
+                className="h-full w-full object-contain"
               />
             </div>
 

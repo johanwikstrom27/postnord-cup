@@ -317,22 +317,34 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
 
   if (movement > 0) {
     return (
-      <span
-        className="inline-flex h-8 w-8 items-center justify-center border border-emerald-300/40 bg-emerald-400/18 text-[11px] font-black text-emerald-100 shadow-[0_0_0_1px_rgba(52,211,153,0.10)]"
-        style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }}
-      >
-        <span className="translate-y-[3px]">{movement}</span>
+      <span className="relative inline-flex h-8 w-8 items-center justify-center">
+        <svg viewBox="0 0 32 32" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          <polygon
+            points="16,2 30,29 2,29"
+            fill="rgba(52, 211, 153, 0.26)"
+            stroke="rgba(167, 243, 208, 0.9)"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="relative translate-y-[4px] text-[11px] font-black text-emerald-50">{movement}</span>
       </span>
     );
   }
 
   if (movement < 0) {
     return (
-      <span
-        className="inline-flex h-8 w-8 items-center justify-center border border-red-300/40 bg-red-400/18 text-[11px] font-black text-red-100 shadow-[0_0_0_1px_rgba(248,113,113,0.10)]"
-        style={{ clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)" }}
-      >
-        <span className="-translate-y-[3px]">{Math.abs(movement)}</span>
+      <span className="relative inline-flex h-8 w-8 items-center justify-center">
+        <svg viewBox="0 0 32 32" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          <polygon
+            points="2,3 30,3 16,30"
+            fill="rgba(248, 113, 113, 0.26)"
+            stroke="rgba(254, 202, 202, 0.9)"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="relative -translate-y-[4px] text-[11px] font-black text-red-50">{Math.abs(movement)}</span>
       </span>
     );
   }

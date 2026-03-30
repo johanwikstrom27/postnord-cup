@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import NavBar from "@/components/NavBar";
 
 /**
@@ -36,7 +37,9 @@ export default function RootLayout({
 
       <body className="min-h-screen bg-[#070b14] text-white antialiased">
         {/* Top navigation */}
-        <NavBar />
+        <Suspense fallback={null}>
+          <NavBar />
+        </Suspense>
 
         {/* Page content */}
         <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-10">

@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import AdminLockPreviewModal from "@/components/AdminLockPreviewModal";
+import { buildTeamPreview, type PreviewEntry } from "@/lib/adminResultPreview";
 
 type PlayerRow = {
   season_player_id: string;
   name: string;
   hcp: number;
-
   existing_dns: boolean;
   existing_lag_nr: number | null;
   existing_lag_score: number | null;
@@ -16,17 +17,10 @@ type PlayerRow = {
 type TeamRow = {
   lag_nr: number;
   lag_score: number | null;
-  members: string[]; // season_player_id[]
+  members: string[];
 };
 
-type Entry = {
-  season_player_id: string;
-  gross_strokes: number | null;
-  did_not_play: boolean;
-  override_placing: number | null;
-  lag_nr: number | null;
-  lag_score: number | null;
-};
+type Entry = PreviewEntry;
 
 type SavePayload = {
   entries: Entry[];
@@ -40,6 +34,7 @@ function getErrorMessage(error: unknown) {
 
 export default function AdminTeamEventForm({
   eventId,
+  eventName,
   isLocked,
   players,
   initialTeams,
@@ -52,42 +47,53 @@ export default function AdminTeamEventForm({
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [rows, setRows] = useState<Entry[]>(
-    players.map((p) => ({
-      season_player_id: p.season_player_id,
-      gross_strokes: null, // ej använd för lag
-      did_not_play: p.existing_dns ?? false,
-      override_placing: p.existing_override ?? null,
-      lag_nr: p.existing_lag_nr ?? null,
-      lag_score: p.existing_lag_score ?? null,
+    players.map((player) => ({
+      season_player_id: player.season_player_id,
+      gross_strokes: null,
+      did_not_play: player.existing_dns ?? false,
+      override_placing: player.existing_override ?? null,
+      lag_nr: player.existing_lag_nr ?? null,
+      lag_score: player.existing_lag_score ?? null,
     }))
   );
 
-  // init team scores (1..6)
   const initialScoreMap = useMemo(() => {
-    const m: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
-    for (const t of initialTeams ?? []) {
-      if (t?.lag_nr && t.lag_score != null) m[t.lag_nr] = t.lag_score;
+    const map: Record<number, number | null> = { 1: null, 2: null, 3: null, 4: null, 5: null, 6: null };
+    for (const team of initialTeams ?? []) {
+      if (team?.lag_nr && team.lag_score != null) map[team.lag_nr] = team.lag_score;
     }
-    // fallback: first score found from rows
-    for (const r of rows) {
-      if (r.lag_nr && r.lag_score != null && m[r.lag_nr] == null) m[r.lag_nr] = r.lag_score;
+    for (const row of rows) {
+      if (row.lag_nr && row.lag_score != null && map[row.lag_nr] == null) map[row.lag_nr] = row.lag_score;
     }
-    return m;
+    return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [teamScore, setTeamScore] = useState<Record<number, number | null>>(initialScoreMap);
 
-  function patchRow(id: string, patch: Partial<Entry>) {
-    setRows((prev) => prev.map((r) => (r.season_player_id === id ? { ...r, ...patch } : r)));
+  const preview = useMemo(
+    () =>
+      buildTeamPreview(
+        players.map((player) => ({
+          season_player_id: player.season_player_id,
+          name: player.name,
+          hcp: player.hcp,
+        })),
+        rows
+      ),
+    [players, rows]
+  );
+
+  function patchRow(id: string, patchValue: Partial<Entry>) {
+    setRows((prev) => prev.map((row) => (row.season_player_id === id ? { ...row, ...patchValue } : row)));
   }
 
   function setTeamScoreFor(lag: number, value: number | null) {
     setTeamScore((prev) => ({ ...prev, [lag]: value }));
-    // apply score to all members of that team
-    setRows((prev) => prev.map((r) => (r.lag_nr === lag ? { ...r, lag_score: value } : r)));
+    setRows((prev) => prev.map((row) => (row.lag_nr === lag ? { ...row, lag_score: value } : row)));
   }
 
   async function callApi(mode: "save" | "lock" | "unlock") {
@@ -112,11 +118,20 @@ export default function AdminTeamEventForm({
         return;
       }
 
-      if (mode === "unlock") setMsg("Tävlingen är upplåst ✅");
-      else if (mode === "lock") setMsg("Tävlingen är låst ✅");
-      else setMsg("Sparat ✅");
+      if (mode === "unlock") {
+        setMsg("Tävlingen är upplåst ✅");
+        window.location.reload();
+        return;
+      }
 
-      window.location.reload();
+      if (mode === "lock") {
+        setMsg("Tävlingen är låst ✅");
+        window.location.reload();
+        return;
+      }
+
+      setMsg("Sparat ✅ Lagpreviewn nedan visar hur placeringarna ser ut just nu.");
+      setBusy(false);
     } catch (error: unknown) {
       setMsg(`Fel: ${getErrorMessage(error)}`);
       setBusy(false);
@@ -124,98 +139,119 @@ export default function AdminTeamEventForm({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70 text-left">
-        <strong>Lagtävling</strong>: välj lag (1–6) för spelare och ange ett <strong>lagbrutto</strong> per lag.
-        <strong> Särspel placering</strong> kan användas som tie-break om lagresultat blir lika.
+    <div className="space-y-5">
+      <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 text-sm text-white/70">
+        <div className="text-xs uppercase tracking-[0.28em] text-white/45">Lagtävling</div>
+        <p className="mt-3 leading-6">
+          Välj lag per spelare och fyll i ett gemensamt lagbrutto för varje lag. Om lag hamnar lika kan
+          särspel användas för att styra intern ordning.
+        </p>
       </div>
 
       {msg && (
-        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+        <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85">
           {msg}
         </div>
       )}
 
-      {/* Lagbrutto */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="text-sm font-semibold mb-3">Lagbrutto</div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_12px_48px_rgba(0,0,0,0.14)]">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.28em] text-white/45">Lagbrutto</div>
+            <h2 className="mt-2 text-xl font-semibold text-white">Sätt score för lagen först</h2>
+          </div>
+          <div className="text-sm text-white/55">Poängen och placeringarna räknas per lag.</div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map((lag) => (
-            <div key={lag} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-              <div className="text-sm text-white/80">Lag {lag}</div>
+            <label
+              key={lag}
+              className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-3"
+            >
+              <span className="text-xs uppercase tracking-[0.24em] text-white/45">Lag {lag}</span>
               <input
                 type="number"
+                inputMode="numeric"
                 value={teamScore[lag] ?? ""}
                 disabled={busy || isLocked}
                 onChange={(e) => setTeamScoreFor(lag, e.target.value === "" ? null : Number(e.target.value))}
-                className="w-24 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-sm text-right tabular-nums focus:border-white/30 focus:outline-none"
+                className="mt-3 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-lg tabular-nums text-white outline-none transition focus:border-white/30"
               />
-            </div>
+            </label>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Spelare -> lag */}
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
-        {players.map((p) => {
-          const r = rows.find((x) => x.season_player_id === p.season_player_id)!;
+      <div className="grid gap-3">
+        {players.map((player) => {
+          const row = rows.find((entry) => entry.season_player_id === player.season_player_id)!;
 
           return (
-            <div key={p.season_player_id} className="border-b border-white/10 px-4 py-4 last:border-b-0">
-              <div className="mb-2">
-                <div className="font-semibold">{p.name}</div>
-                <div className="text-sm text-white/60">{p.hcp.toFixed(1)}</div>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-white/60">Lag:</span>
-                  <select
-                    value={r.lag_nr ?? ""}
-                    disabled={busy || isLocked}
-                    onChange={(e) => {
-                      const lag = e.target.value === "" ? null : Number(e.target.value);
-                      patchRow(p.season_player_id, {
-                        lag_nr: lag,
-                        lag_score: lag ? (teamScore[lag] ?? null) : null,
-                      });
-                    }}
-                    className="w-24 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-sm focus:border-white/30 focus:outline-none"
-                  >
-                    <option value="">—</option>
-                    <option value="1">Lag 1</option>
-                    <option value="2">Lag 2</option>
-                    <option value="3">Lag 3</option>
-                    <option value="4">Lag 4</option>
-                    <option value="5">Lag 5</option>
-                    <option value="6">Lag 6</option>
-                  </select>
-
-                  <label className="flex items-center gap-2 text-xs text-white/70">
-                    <input
-                      type="checkbox"
-                      checked={r.did_not_play}
-                      disabled={busy || isLocked}
-                      onChange={(e) => patchRow(p.season_player_id, { did_not_play: e.target.checked })}
-                    />
-                    DNS
-                  </label>
+            <div
+              key={player.season_player_id}
+              className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_10px_40px_rgba(0,0,0,0.12)]"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="text-xl font-semibold tracking-tight text-white">{player.name}</div>
+                  <div className="mt-1 text-sm text-white/55">HCP {player.hcp.toFixed(1)}</div>
                 </div>
 
-                {/* Särspel placering (tie-break) */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/60">Särspel placering:</span>
-                  <input
-                    type="number"
-                    value={r.override_placing ?? ""}
-                    disabled={busy || isLocked}
-                    onChange={(e) =>
-                      patchRow(p.season_player_id, {
-                        override_placing: e.target.value === "" ? null : Number(e.target.value),
-                      })
-                    }
-                    className="w-20 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-sm tabular-nums focus:border-white/30 focus:outline-none"
-                  />
+                <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,180px)_minmax(0,180px)_auto]">
+                  <label className="space-y-2">
+                    <span className="text-xs uppercase tracking-[0.24em] text-white/45">Lag</span>
+                    <select
+                      value={row.lag_nr ?? ""}
+                      disabled={busy || isLocked}
+                      onChange={(e) => {
+                        const lag = e.target.value === "" ? null : Number(e.target.value);
+                        patchRow(player.season_player_id, {
+                          lag_nr: lag,
+                          lag_score: lag ? (teamScore[lag] ?? null) : null,
+                        });
+                      }}
+                      className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-lg text-white outline-none transition focus:border-white/30"
+                    >
+                      <option value="">Välj lag</option>
+                      <option value="1">Lag 1</option>
+                      <option value="2">Lag 2</option>
+                      <option value="3">Lag 3</option>
+                      <option value="4">Lag 4</option>
+                      <option value="5">Lag 5</option>
+                      <option value="6">Lag 6</option>
+                    </select>
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-xs uppercase tracking-[0.24em] text-white/45">Särspel</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={row.override_placing ?? ""}
+                      disabled={busy || isLocked}
+                      onChange={(e) =>
+                        patchRow(player.season_player_id, {
+                          override_placing: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                      className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-lg tabular-nums text-white outline-none transition focus:border-white/30"
+                    />
+                  </label>
+
+                  <label className="flex min-h-[64px] items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={row.did_not_play}
+                      disabled={busy || isLocked}
+                      onChange={(e) => patchRow(player.season_player_id, { did_not_play: e.target.checked })}
+                      className="h-5 w-5 rounded border-white/20 bg-transparent"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-white">DNS</div>
+                      <div className="text-xs text-white/50">Spelaren deltog inte</div>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>
@@ -223,38 +259,210 @@ export default function AdminTeamEventForm({
         })}
       </div>
 
-      {/* Buttons – matchar AdminEventForm */}
-      <div className="flex items-center gap-4 pt-2">
-        {!isLocked && (
-          <button
-            type="button"
-            onClick={() => callApi("save")}
-            disabled={busy}
-            className="relative overflow-hidden rounded-xl px-7 py-2.5 text-sm font-semibold
-              bg-gradient-to-br from-emerald-500/90 to-emerald-600 text-white
-              shadow-lg shadow-emerald-900/30 hover:from-emerald-400 hover:to-emerald-600
-              disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Spara
-            <span className="absolute inset-0 rounded-xl ring-1 ring-white/20" />
-          </button>
-        )}
+      {!isLocked && (
+        <section className="rounded-[28px] border border-white/10 bg-gradient-to-br from-white/6 to-white/[0.03] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.16)] md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Preview innan låsning</div>
+              <h2 className="mt-2 text-xl font-semibold text-white">Verifiera lagställningen</h2>
+              <p className="mt-2 max-w-2xl text-sm text-white/60">
+                Se vilka lag som är klara, vilka spelare som saknar lag och hur ordningen ser ut innan du låser.
+              </p>
+            </div>
 
-        <button
-          type="button"
-          onClick={() => callApi(isLocked ? "unlock" : "lock")}
-          disabled={busy}
-          className={`relative overflow-hidden rounded-xl px-7 py-2.5 text-sm font-semibold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed
-            ${
-              isLocked
-                ? "bg-gradient-to-br from-red-500/90 to-red-600 text-white shadow-red-900/30 hover:from-red-400 hover:to-red-600"
-                : "bg-gradient-to-br from-slate-600/80 to-slate-700 text-white shadow-black/40 hover:from-slate-500 hover:to-slate-700"
-            }`}
-        >
-          {isLocked ? "Lås upp" : "Lås"}
-          <span className="absolute inset-0 rounded-xl ring-1 ring-white/20" />
-        </button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">Rankade lag</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{preview.rankedTeams.length}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">Ej klara lag</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{preview.pendingTeams.length}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">Utan lag</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{preview.unassigned.length}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">DNS</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{preview.dns.length}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            {preview.teams.map((team) => (
+              <div key={team.lagNr} className="rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-semibold text-white">Lag {team.lagNr}</span>
+                      {team.placing != null && (
+                        <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
+                          #{team.placing}
+                        </span>
+                      )}
+                      {!team.complete && (
+                        <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs text-white/65">
+                          Ej komplett
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 break-words text-sm text-white/55">{team.memberNames.join(", ") || "Inga spelare"}</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Brutto</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{team.score ?? "—"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Särspel</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{team.overridePlacing ?? "—"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Spelare</div>
+                      <div className="mt-1 text-lg font-semibold text-white">{team.playerCount}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {(preview.unassigned.length > 0 || preview.dns.length > 0) && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                  <div className="text-xs uppercase tracking-[0.24em] text-white/45">Utan lag</div>
+                  <div className="mt-3 text-sm leading-6 text-white/75">
+                    {preview.unassigned.length > 0
+                      ? preview.unassigned.map((player) => player.name).join(", ")
+                      : "Alla spelare har lag."}
+                  </div>
+                </div>
+                <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                  <div className="text-xs uppercase tracking-[0.24em] text-white/45">DNS</div>
+                  <div className="mt-3 text-sm leading-6 text-white/75">
+                    {preview.dns.length > 0 ? preview.dns.map((player) => player.name).join(", ") : "Inga DNS."}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      <div className="rounded-[26px] border border-white/10 bg-black/20 p-4 md:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-white">Lås först när lagen stämmer</div>
+            <p className="mt-1 text-sm text-white/55">
+              Spara utkast, granska lagställningen och bekräfta sedan låsning i previewn.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {!isLocked && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => callApi("save")}
+                  disabled={busy}
+                  className="rounded-2xl border border-white/10 bg-white/8 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy ? "Sparar..." : "Spara utkast"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
+                  disabled={busy}
+                  className="rounded-2xl border border-emerald-400/20 bg-emerald-500/15 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Förhandsgranska & lås
+                </button>
+              </>
+            )}
+
+            {isLocked && (
+              <button
+                type="button"
+                onClick={() => callApi("unlock")}
+                disabled={busy}
+                className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? "Jobbar..." : "Lås upp"}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      <AdminLockPreviewModal
+        open={previewOpen}
+        busy={busy}
+        title={`Lås ${eventName}`}
+        description="Kontrollera lagställningen en sista gång. När du bekräftar låses tävlingen och resultatet blir officiellt."
+        onClose={() => setPreviewOpen(false)}
+        onConfirm={() => callApi("lock")}
+      >
+        <div className="space-y-3">
+          {preview.teams.map((team) => (
+            <div key={team.lagNr} className="rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-lg font-semibold text-white">Lag {team.lagNr}</span>
+                    {team.placing != null && (
+                      <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-100">
+                        #{team.placing}
+                      </span>
+                    )}
+                    {!team.complete && (
+                      <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs text-white/65">
+                        Ej komplett
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 break-words text-sm text-white/55">{team.memberNames.join(", ") || "Inga spelare"}</div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Brutto</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{team.score ?? "—"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Särspel</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{team.overridePlacing ?? "—"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Spelare</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{team.playerCount}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {(preview.unassigned.length > 0 || preview.dns.length > 0) && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className="text-xs uppercase tracking-[0.24em] text-white/45">Utan lag</div>
+                <div className="mt-3 text-sm leading-6 text-white/75">
+                  {preview.unassigned.length > 0
+                    ? preview.unassigned.map((player) => player.name).join(", ")
+                    : "Alla spelare har lag."}
+                </div>
+              </div>
+              <div className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-4">
+                <div className="text-xs uppercase tracking-[0.24em] text-white/45">DNS</div>
+                <div className="mt-3 text-sm leading-6 text-white/75">
+                  {preview.dns.length > 0 ? preview.dns.map((player) => player.name).join(", ") : "Inga DNS."}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </AdminLockPreviewModal>
     </div>
   );
 }

@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   // Skapa ny säsong som INAKTIV
   const insSeason = await sb
     .from("seasons")
-    .insert({ name, is_current: false })
+    .insert({ name, is_current: false, is_published: false })
     .select("id")
     .single();
 

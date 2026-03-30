@@ -4,6 +4,7 @@ export const revalidate = 0;
 
 import { supabaseServer } from "@/lib/supabase";
 import SpinTheWheelClient from "@/components/SpinTheWheelClient";
+import { resolvePublicSeason } from "@/lib/publicSeason";
 
 type PlayerRow = {
   season_player_id: string;
@@ -21,15 +22,14 @@ type PlayerRespRow = {
 export default async function WheelPage() {
   const sb = supabaseServer();
 
-  // current season
-  const seasonResp = await sb.from("seasons").select("id").eq("is_current", true).single();
-  const seasonId = seasonResp.data?.id as string | undefined;
+  const season = await resolvePublicSeason(sb, null);
+  const seasonId = season?.id;
 
   if (!seasonId) {
     return (
       <main className="px-4 py-10 max-w-6xl mx-auto">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/80">
-          Hittar ingen aktiv säsong (is_current=true).
+          Hittar ingen publicerad säsong.
         </div>
       </main>
     );

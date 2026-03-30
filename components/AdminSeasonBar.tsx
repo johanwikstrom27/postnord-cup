@@ -53,71 +53,83 @@ export default function AdminSeasonBar({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-200">
-            ADMIN
-          </span>
-          <div className="text-sm text-white/70">Aktiv säsong</div>
+    <div className="rounded-[30px] border border-white/10 bg-gradient-to-br from-white/8 to-white/[0.03] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.16)] backdrop-blur md:p-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-200">
+              ADMIN
+            </span>
+            <div className="text-sm text-white/70">Aktiv säsong</div>
+          </div>
+
+          <div>
+            <div className="text-xs uppercase tracking-[0.26em] text-white/40">Styrning</div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
+              Byt säsong här och hoppa snabbt mellan resultat, tävlingar, regler och spelare.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <select
-            value={selected}
-            onChange={(e) => onChangeSeason(e.target.value)}
-            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm"
-          >
-            {seasonsSorted.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+        <div className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:max-w-xl">
+          <label className="space-y-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-white/40">Vald säsong</span>
+            <select
+              value={selected}
+              onChange={(e) => onChangeSeason(e.target.value)}
+              className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none transition focus:border-white/30"
+            >
+              {seasonsSorted.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <Link
             href="/admin/seasons"
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
           >
             Säsonger →
           </Link>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         <Link
           href={buildHref("/admin", selected)}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Resultat
         </Link>
         <Link
           href={buildHref("/admin/players", selected)}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Säsongsspelare
         </Link>
         <Link
           href={buildHref("/admin/events", selected)}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Tävlingar
         </Link>
         <Link
           href="/admin/people"
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Spelarprofiler
         </Link>
         <Link
           href={buildHref("/admin/rules", selected)}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Regler
         </Link>
         <Link
           href={buildHref("/admin/points", selected)}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Poängtabell
         </Link>

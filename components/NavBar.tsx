@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import NotificationBell from "@/components/NotificationBell";
@@ -18,6 +18,7 @@ const LINKS = [
 ];
 
 const SEASON_AWARE_LINKS = new Set(["/", "/overview", "/leaderboard", "/events", "/players", "/stadgar"]);
+const SEASON_STORAGE_KEY = "pnc-selected-season";
 
 type SeasonOption = {
   id: string;
@@ -32,11 +33,15 @@ function isActivePath(pathname: string, href: string) {
 }
 
 export default function NavBar() {
+  const router = useRouter();
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [seasons, setSeasons] = useState<SeasonOption[]>([]);
-  const [seasonOverrideId, setSeasonOverrideId] = useState<string | null>(null);
+  const [storedSeasonId, setStoredSeasonId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.sessionStorage.getItem(SEASON_STORAGE_KEY) ?? "";
+  });
 
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -47,6 +52,11 @@ export default function NavBar() {
   }, [pathname]);
 
   const requestedSeasonId = searchParams?.get("season") ?? null;
+  const activeSeasonId = seasons.find((season) => season.is_current)?.id ?? seasons[0]?.id ?? "";
+  const validRequestedSeasonId =
+    requestedSeasonId && seasons.some((season) => season.id === requestedSeasonId) ? requestedSeasonId : null;
+  const validStoredSeasonId =
+    storedSeasonId && seasons.some((season) => season.id === storedSeasonId) ? storedSeasonId : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -68,17 +78,57 @@ export default function NavBar() {
     };
   }, []);
 
-  const selectedSeasonId = seasonOverrideId ?? requestedSeasonId ?? seasons.find((season) => season.is_current)?.id ?? "";
+  const selectedSeasonId = validRequestedSeasonId ?? validStoredSeasonId ?? activeSeasonId;
+
+  useEffect(() => {
+    if (!seasons.length || !selectedSeasonId) return;
+
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(SEASON_STORAGE_KEY) !== selectedSeasonId) {
+      window.sessionStorage.setItem(SEASON_STORAGE_KEY, selectedSeasonId);
+    }
+
+    if (
+      validRequestedSeasonId == null &&
+      validStoredSeasonId &&
+      SEASON_AWARE_LINKS.has(pathname)
+    ) {
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      params.set("season", validStoredSeasonId);
+      router.replace(`${pathname}?${params.toString()}`);
+    }
+  }, [pathname, router, searchParams, seasons.length, selectedSeasonId, validRequestedSeasonId, validStoredSeasonId]);
 
   const selectedSeasonName = useMemo(() => {
     if (!selectedSeasonId) return "Aktiv säsong";
     return seasons.find((season) => season.id === selectedSeasonId)?.name ?? "Aktiv säsong";
   }, [selectedSeasonId, seasons]);
 
+  const selectedSeasonShort = useMemo(() => {
+    const match = selectedSeasonName.match(/\d{4}\/\d{4}/);
+    return match?.[0] ?? "";
+  }, [selectedSeasonName]);
+
   function hrefFor(linkHref: string) {
     if (!SEASON_AWARE_LINKS.has(linkHref)) return linkHref;
     if (!selectedSeasonId) return linkHref;
     return `${linkHref}?season=${encodeURIComponent(selectedSeasonId)}`;
+  }
+
+  function handleSeasonChange(nextSeasonId: string) {
+    setStoredSeasonId(nextSeasonId);
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(SEASON_STORAGE_KEY, nextSeasonId);
+    }
+
+    if (!SEASON_AWARE_LINKS.has(pathname)) return;
+
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (nextSeasonId) params.set("season", nextSeasonId);
+    else params.delete("season");
+
+    const nextHref = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.push(nextHref);
   }
 
   // Close on ESC
@@ -108,7 +158,7 @@ export default function NavBar() {
       <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-gradient-to-r from-[#0b1020]/80 to-[#0b1626]/80 backdrop-blur-xl shadow-lg">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           {/* Brand */}
-          <Link href="/" className="flex items-center gap-3 min-w-0">
+          <Link href={hrefFor("/")} className="flex items-center gap-3 min-w-0">
             <div className="h-10 w-10 overflow-hidden rounded-xl border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -119,7 +169,12 @@ export default function NavBar() {
             </div>
 
             <div className="min-w-0 leading-tight">
-              <div className="font-semibold text-white truncate">PostNord Cup</div>
+              <div className="flex items-baseline gap-2">
+                <div className="font-semibold text-white truncate">PostNord Cup</div>
+                {selectedSeasonShort ? (
+                  <div className="truncate text-[11px] font-medium text-white/55">{selectedSeasonShort}</div>
+                ) : null}
+              </div>
               <div className="text-xs text-white/60 truncate">Trackman @ Troxhammar GK</div>
             </div>
           </Link>
@@ -134,13 +189,7 @@ export default function NavBar() {
               <button
                 ref={menuBtnRef}
                 type="button"
-                onClick={() =>
-                  setOpen((v) => {
-                    const next = !v;
-                    if (next) setSeasonOverrideId(null);
-                    return next;
-                  })
-                }
+                onClick={() => setOpen((v) => !v)}
                 className={[
                   "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-white/90 hover:bg-white/10 transition",
                   "max-w-[120px] sm:max-w-none sm:min-w-[220px]",
@@ -202,7 +251,7 @@ export default function NavBar() {
                             <div className="mt-3">
                               <select
                                 value={selectedSeasonId}
-                                onChange={(e) => setSeasonOverrideId(e.target.value)}
+                                onChange={(e) => handleSeasonChange(e.target.value)}
                                 className="w-full rounded-xl border border-white/10 bg-[#0f1726] px-3 py-2 text-sm text-white outline-none"
                               >
                                 {seasons.map((season) => (

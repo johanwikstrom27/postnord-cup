@@ -5,7 +5,7 @@ export const revalidate = 0;
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
 
-type SeasonRow = { id: string; name: string; created_at: string };
+type SeasonRow = { id: string; name: string; created_at: string; is_published: boolean | null };
 
 type RulesRow = {
   season_id: string;
@@ -188,7 +188,8 @@ export default async function HistoryPage() {
 
   const seasonsResp = await sb
     .from("seasons")
-    .select("id,name,created_at")
+    .select("id,name,created_at,is_published")
+    .eq("is_published", true)
     .order("created_at", { ascending: false });
 
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];

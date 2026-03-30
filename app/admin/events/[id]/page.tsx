@@ -48,6 +48,12 @@ type StartScoreRow = {
   start_score: number;
 };
 
+type RulesRow = {
+  hcp_zero_max: number | null;
+  hcp_two_max: number | null;
+  hcp_four_min: number | null;
+};
+
 type PlayerForEventForm = {
   season_player_id: string;
   name: string;
@@ -212,29 +218,55 @@ export default async function AdminEventDetailPage({
     startScores = (ssResp.data ?? []) as StartScoreRow[];
   }
 
+  const rulesResp = await sb
+    .from("season_rules")
+    .select("hcp_zero_max,hcp_two_max,hcp_four_min")
+    .eq("season_id", event.season_id)
+    .single();
+
+  const hcpRules: RulesRow = {
+    hcp_zero_max: rulesResp.data?.hcp_zero_max ?? null,
+    hcp_two_max: rulesResp.data?.hcp_two_max ?? null,
+    hcp_four_min: rulesResp.data?.hcp_four_min ?? null,
+  };
+
   return (
-    <main className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Link href={`/admin${seasonQuery}`} className="text-sm text-white/70 hover:underline">
-          ← Admin
+    <main className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href={`/admin${seasonQuery}`}
+          className="inline-flex items-center gap-2 text-sm text-white/70 transition hover:text-white"
+        >
+          <span>←</span>
+          <span>Admin</span>
         </Link>
 
-        <Link href={`/events/${event.id}${seasonQuery}`} className="text-sm text-white/70 hover:underline">
-          Öppna publika sidan →
+        <Link
+          href={`/events/${event.id}${seasonQuery}`}
+          className="inline-flex items-center gap-2 text-sm text-white/70 transition hover:text-white"
+        >
+          <span>Öppna publika sidan</span>
+          <span>→</span>
         </Link>
       </div>
 
-      {/* Header */}
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-        <div className="flex items-start justify-between gap-4">
+      <section className="rounded-[28px] border border-white/10 bg-gradient-to-br from-white/8 to-white/[0.03] p-5 shadow-[0_20px_80px_rgba(0,0,0,0.16)] md:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-sm text-white/60">Admin</div>
-            <h1 className="text-3xl font-semibold">{event.name}</h1>
-            <div className="text-white/60">Typ: {event.event_type}</div>
+            <div className="text-xs uppercase tracking-[0.28em] text-white/45">Admin • Resultat</div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{event.name}</h1>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/75">
+                Typ: {event.event_type}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/75">
+                Resultatvy
+              </span>
+            </div>
           </div>
 
           <div
-            className={`rounded-full border px-3 py-1 text-sm ${
+            className={`inline-flex h-fit rounded-full border px-3 py-1 text-sm ${
               event.locked
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
                 : "border-white/15 bg-white/5 text-white/80"
@@ -243,10 +275,14 @@ export default async function AdminEventDetailPage({
             {event.locked ? "Låst" : "Upplåst"}
           </div>
         </div>
+
+        <p className="mt-5 max-w-2xl text-sm leading-6 text-white/65">
+          Resultaten kan sparas som utkast innan du låser tävlingen. När du låser får du nu en tydlig
+          förhandsgranskning så att du kan verifiera placeringar innan notiser går ut.
+        </p>
       </section>
 
-      {/* Form */}
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
+      <section className="rounded-[28px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.16)] md:p-6">
         {isFinal ? (
           <AdminFinalEventForm
             eventId={event.id}
@@ -254,6 +290,7 @@ export default async function AdminEventDetailPage({
             isLocked={event.locked}
             players={playersFinalForm}
             startScores={startScores}
+            hcpRules={hcpRules}
           />
         ) : isTeam ? (
           <AdminTeamEventForm
@@ -266,9 +303,11 @@ export default async function AdminEventDetailPage({
         ) : (
           <AdminEventForm
             eventId={event.id}
+            eventName={event.name}
             eventType={event.event_type}
             locked={event.locked}
             players={playersEventForm}
+            hcpRules={hcpRules}
           />
         )}
       </section>

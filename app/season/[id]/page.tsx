@@ -20,6 +20,7 @@ export default async function SeasonViewPage({
     .from("seasons")
     .select("id,name,created_at")
     .eq("id", id)
+    .eq("is_published", true)
     .single();
 
   const season = (seasonResp.data as SeasonRow | null) ?? null;

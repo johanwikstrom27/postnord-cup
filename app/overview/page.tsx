@@ -4,8 +4,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
-
-type SeasonRow = { id: string; name: string; created_at: string };
+import { resolvePublicSeason } from "@/lib/publicSeason";
 
 type EventRow = {
   id: string;
@@ -104,29 +103,6 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
-  if (requestedSeasonId) {
-    const r = await sb.from("seasons").select("id,name,created_at").eq("id", requestedSeasonId).single();
-    const s = (r.data as SeasonRow | null) ?? null;
-    if (s) return s;
-  }
-
-  const cur = await sb.from("seasons").select("id,name,created_at").eq("is_current", true).limit(1).single();
-  let season = (cur.data as SeasonRow | null) ?? null;
-
-  if (!season) {
-    const latest = await sb
-      .from("seasons")
-      .select("id,name,created_at")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    season = (latest.data as SeasonRow | null) ?? null;
-  }
-
-  return season;
-}
-
 export default async function OverviewPage({
   searchParams,
 }: {
@@ -135,7 +111,7 @@ export default async function OverviewPage({
   const sp = await searchParams;
   const sb = supabaseServer();
 
-  const season = await resolveSeason(sb, sp?.season ?? null);
+  const season = await resolvePublicSeason(sb, sp?.season ?? null);
   if (!season) return <div className="text-white/70">Ingen säsong hittades.</div>;
 
   const seasonQuery = `?season=${encodeURIComponent(season.id)}`;

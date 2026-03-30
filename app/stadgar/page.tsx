@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { supabaseServer } from "@/lib/supabase";
-
-type SeasonRow = { id: string; name: string; created_at: string; is_current?: boolean };
+import { resolvePublicSeason } from "@/lib/publicSeason";
 
 type RulesRow = {
   vanlig_best_of: number | null;
@@ -40,34 +39,6 @@ type PointsRow = {
 
 function fmtInt(n: number) {
   return n.toLocaleString("sv-SE");
-}
-
-async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
-  if (requestedSeasonId) {
-    const requested = await sb
-      .from("seasons")
-      .select("id,name,created_at,is_current")
-      .eq("id", requestedSeasonId)
-      .single();
-    if (requested.data) return requested.data as SeasonRow;
-  }
-
-  const cur = await sb
-    .from("seasons")
-    .select("id,name,created_at,is_current")
-    .eq("is_current", true)
-    .limit(1)
-    .single();
-  if (cur.data) return cur.data as SeasonRow;
-
-  const latest = await sb
-    .from("seasons")
-    .select("id,name,created_at,is_current")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  return (latest.data as SeasonRow | null) ?? null;
 }
 
 function pnHcpSlag(hcp: number, hcpZeroMax: number, hcpTwoMax: number, hcpFourMin: number) {
@@ -138,7 +109,7 @@ export default async function StadgarPage({
 }) {
   const sb = supabaseServer();
   const sp = await searchParams;
-  const season = await resolveSeason(sb, sp?.season ?? null);
+  const season = await resolvePublicSeason(sb, sp?.season ?? null);
   if (!season) return <div className="text-white/70">Ingen säsong hittades.</div>;
 
   // Regler (best-of + HCP-gränser)

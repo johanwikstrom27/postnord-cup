@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean };
+type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean; is_published: boolean };
 type Winner = { name: string; avatar_url: string | null; total: number } | null;
 type WinnerRow = { season_id: string; winner: Winner; label: string };
 
@@ -28,6 +28,18 @@ function CurrentChip() {
   return (
     <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
       Aktiv
+    </span>
+  );
+}
+
+function PublishedChip({ published }: { published: boolean }) {
+  return published ? (
+    <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-200">
+      Publicerad
+    </span>
+  ) : (
+    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">
+      Ej publicerad
     </span>
   );
 }
@@ -92,6 +104,26 @@ export default function AdminSeasonsClient({
     }
   }
 
+  async function setPublished(season_id: string, is_published: boolean) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/seasons/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ season_id, is_published }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error ?? "Kunde inte uppdatera publicering");
+      setMsg(is_published ? "✅ Säsongen är nu publicerad." : "✅ Säsongen är nu dold publikt.");
+      window.location.reload();
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Ny säsong */}
@@ -144,6 +176,7 @@ export default function AdminSeasonsClient({
                   <div className="flex items-center gap-2">
                     <div className="text-xs text-white/60">Säsong</div>
                     {s.is_current ? <CurrentChip /> : null}
+                    <PublishedChip published={s.is_published} />
                   </div>
                   <div className="text-xl font-semibold">{s.name}</div>
 
@@ -168,6 +201,18 @@ export default function AdminSeasonsClient({
                   Sätt som aktiv
                 </button>
 
+                <button
+                  onClick={() => setPublished(s.id, !s.is_published)}
+                  disabled={busy}
+                  className={`rounded-xl border px-3 py-2 text-sm transition disabled:opacity-50 ${
+                    s.is_published
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+                      : "border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20"
+                  }`}
+                >
+                  {s.is_published ? "Dölj publikt" : "Publicera säsong"}
+                </button>
+
                 <Link
                   href={`/admin?season=${encodeURIComponent(s.id)}`}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
@@ -177,7 +222,11 @@ export default function AdminSeasonsClient({
 
                 <Link
                   href={`/?season=${encodeURIComponent(s.id)}`}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10"
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    s.is_published
+                      ? "border-white/10 bg-white/5 hover:bg-white/10"
+                      : "pointer-events-none border-white/10 bg-white/5 text-white/35"
+                  }`}
                 >
                   Visa publikt →
                 </Link>

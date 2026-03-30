@@ -7,6 +7,7 @@ type SeasonRow = {
   id: string;
   name: string;
   is_current: boolean | null;
+  is_published: boolean | null;
   created_at: string;
 };
 
@@ -15,7 +16,8 @@ export async function GET() {
 
   const resp = await sb
     .from("seasons")
-    .select("id,name,is_current,created_at")
+    .select("id,name,is_current,is_published,created_at")
+    .eq("is_published", true)
     .order("created_at", { ascending: false });
 
   if (resp.error) {

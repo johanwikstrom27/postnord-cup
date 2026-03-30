@@ -69,68 +69,104 @@ export default async function AdminEvents({
 
   return (
     <main className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <div className="text-sm text-white/60">Admin</div>
-          <h1 className="text-2xl font-semibold">Tävlingar</h1>
-          <div className="text-sm text-white/60">{season.name}</div>
-        </div>
+      <section className="rounded-[30px] border border-white/10 bg-gradient-to-br from-white/8 to-white/[0.03] p-5 shadow-[0_20px_80px_rgba(0,0,0,0.16)] md:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.28em] text-white/45">Admin</div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Tävlingar</h1>
+            <div className="mt-2 text-sm text-white/60">{season.name}</div>
+          </div>
 
-        <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href={`/admin${seasonQuery}`} className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10">
+              ← Resultat
+            </Link>
           <Link
             href={`/admin/events/new${seasonQuery}`}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10"
+            className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
           >
             Ny tävling →
           </Link>
-
-          <Link href={`/admin${seasonQuery}`} className="text-sm text-white/70 hover:underline">
-            ← Resultat
-          </Link>
+          </div>
         </div>
-      </div>
 
-      <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+        <p className="mt-4 max-w-2xl text-sm leading-6 text-white/68">
+          Här håller du säsongens tävlingar samlade. Layouten är nu byggd för mobil först, så att du snabbt
+          kan hoppa mellan redigering, resultat och borttagning även ute på banan.
+        </p>
+      </section>
+
+      <section className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.14)] md:p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-xs uppercase tracking-[0.28em] text-white/45">Tävlingslista</div>
+          <div className="text-sm text-white/55">{events.length} st</div>
+        </div>
+
+        <div className="grid gap-3">
         {events.map((e) => (
           <div
             key={e.id}
-            className="flex items-center justify-between border-b border-white/10 px-4 py-4 last:border-b-0"
+            className="rounded-[24px] border border-white/10 bg-black/20 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.12)] md:p-5"
           >
-            <div>
-              <div className="font-semibold">{e.name}</div>
-              <div className="text-sm text-white/60">
-                {e.event_type} • {niceDate(e.starts_at)} • {e.course ?? "Bana ej angiven"} •{" "}
-                {e.locked ? "Låst" : "Upplåst"}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-xl font-semibold tracking-tight text-white">{e.name}</div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/75">
+                  {e.event_type}
+                </span>
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-xs ${
+                    e.locked
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  }`}
+                >
+                  {e.locked ? "Låst" : "Upplåst"}
+                </span>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/admin/events/${e.id}/edit${seasonQuery}`}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-              >
-                Redigera
-              </Link>
+              <div className="grid gap-2 text-sm text-white/60 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Start</div>
+                  <div className="mt-1 text-white/80">{niceDate(e.starts_at)}</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 sm:col-span-2">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Bana</div>
+                  <div className="mt-1 text-white/80">{e.course ?? "Bana ej angiven"}</div>
+                </div>
+              </div>
 
-              <Link
-                href={`/admin/events/${e.id}${seasonQuery}`}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10"
-              >
-                Resultat
-              </Link>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Link
+                  href={`/admin/events/${e.id}/edit${seasonQuery}`}
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+                >
+                  Redigera
+                </Link>
 
-              <form method="POST" action="/api/admin/events/delete">
-                <input type="hidden" name="event_id" value={e.id} />
-                <button className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-200 hover:bg-red-500/20">
-                  Ta bort
-                </button>
-              </form>
+                <Link
+                  href={`/admin/events/${e.id}${seasonQuery}`}
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+                >
+                  Resultat
+                </Link>
+
+                <form method="POST" action="/api/admin/events/delete">
+                  <input type="hidden" name="event_id" value={e.id} />
+                  <button className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-200 transition hover:bg-red-500/20">
+                    Ta bort
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         ))}
+        </div>
 
         {events.length === 0 && (
-          <div className="px-4 py-6 text-white/60">Inga tävlingar i denna säsong ännu.</div>
+          <div className="rounded-[24px] border border-dashed border-white/10 px-4 py-8 text-center text-white/60">
+            Inga tävlingar i denna säsong ännu.
+          </div>
         )}
       </section>
     </main>

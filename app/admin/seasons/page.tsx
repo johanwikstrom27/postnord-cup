@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
 import AdminSeasonsClient from "@/components/AdminSeasonsClient";
 
-type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean };
+type SeasonRow = { id: string; name: string; created_at: string; is_current: boolean; is_published: boolean };
 
 type RulesRow = { vanlig_best_of: number; major_best_of: number; lagtavling_best_of: number };
 
@@ -192,7 +192,7 @@ export default async function AdminSeasonsPage() {
 
   const seasonsResp = await sb
     .from("seasons")
-    .select("id,name,created_at,is_current")
+    .select("id,name,created_at,is_current,is_published")
     .order("created_at", { ascending: false });
 
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];

@@ -4,6 +4,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
+import { resolvePublicSeason } from "@/lib/publicSeason";
 
 /* ===========================
    Justera loggstorlek här
@@ -14,8 +15,6 @@ const LOGO_MOBILE = 72;  // px
 /* ===========================
    Types
 =========================== */
-type SeasonRow = { id: string; name: string; created_at?: string; is_current?: boolean };
-
 type RulesRow = {
   vanlig_best_of: number;
   major_best_of: number;
@@ -198,38 +197,6 @@ function fmtNames(names: string[]) {
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} & ${names[1]}`;
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
-}
-
-async function resolveSeason(
-  sb: ReturnType<typeof supabaseServer>,
-  requestedSeasonId: string | null
-): Promise<SeasonRow | null> {
-  if (requestedSeasonId) {
-    const requested = await sb
-      .from("seasons")
-      .select("id,name,created_at,is_current")
-      .eq("id", requestedSeasonId)
-      .single();
-
-    if (requested.data) return requested.data as SeasonRow;
-  }
-
-  const current = await sb
-    .from("seasons")
-    .select("id,name,created_at,is_current")
-    .eq("is_current", true)
-    .limit(1)
-    .single();
-  if (current.data) return current.data as SeasonRow;
-
-  const latest = await sb
-    .from("seasons")
-    .select("id,name,created_at,is_current")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  return (latest.data as SeasonRow | null) ?? null;
 }
 
 function AvatarRound({ url, name, size = 44 }: { url: string | null; name: string; size?: number }) {
@@ -678,7 +645,7 @@ export default async function Page({
   const sb = supabaseServer();
   const sp = await searchParams;
 
-  const season = await resolveSeason(sb, sp?.season ?? null);
+  const season = await resolvePublicSeason(sb, sp?.season ?? null);
   if (!season) return <div className="text-white/70">Ingen säsong hittades.</div>;
   const seasonQuery = `?season=${encodeURIComponent(season.id)}`;
 

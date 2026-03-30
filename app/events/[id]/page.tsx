@@ -289,6 +289,24 @@ export default async function EventDetailPage({
     );
   }
 
+  const seasonResp = await sb
+    .from("seasons")
+    .select("id")
+    .eq("id", event.season_id)
+    .eq("is_published", true)
+    .single();
+
+  if (!seasonResp.data) {
+    return (
+      <main className="space-y-4">
+        <Link href="/events" className="text-sm text-white/70 hover:underline">
+          ← Till tävlingar
+        </Link>
+        <div className="text-white/70">Tävlingen är inte publik ännu.</div>
+      </main>
+    );
+  }
+
   const isFinal = event.event_type === "FINAL";
   const isTeam = event.event_type === "LAGTÄVLING";
 

@@ -126,7 +126,7 @@ type FinalStandingRow = SummaryPerson & {
   baseRank: number;
   finalPlace: number | null;
   didNotPlay: boolean;
-  finalRank: number;
+  displayRank: number;
   movement: number;
 };
 
@@ -947,7 +947,7 @@ export default async function Page({
           baseRank: baseRankByPersonId.get(meta.person_id) ?? leaderboard.length,
           finalPlace: row.placering,
           didNotPlay: row.did_not_play,
-          finalRank: 0,
+          displayRank: 0,
           movement: 0,
         } satisfies FinalStandingRow;
       })
@@ -968,10 +968,32 @@ export default async function Page({
         const finalRank = index + 1;
         return {
           ...row,
-          finalRank,
+          displayRank: finalRank,
           movement: row.baseRank - finalRank,
         };
       });
+
+    const playedFinalists = finalStandings.filter((row) => !row.didNotPlay && typeof row.finalPlace === "number").length;
+    let dnsOffset = 0;
+
+    finalStandings = finalStandings.map((row) => {
+      if (!row.didNotPlay && typeof row.finalPlace === "number") {
+        return {
+          ...row,
+          displayRank: row.finalPlace,
+          movement: row.baseRank - row.finalPlace,
+        };
+      }
+
+      dnsOffset += 1;
+      const displayRank = playedFinalists + dnsOffset;
+
+      return {
+        ...row,
+        displayRank,
+        movement: row.baseRank - displayRank,
+      };
+    });
   }
 
   return (
@@ -1182,7 +1204,7 @@ export default async function Page({
                   className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="w-8 text-white/60">{row.finalRank}</div>
+                    <div className="w-8 text-white/60">{row.displayRank}</div>
                     <AvatarRound url={row.avatar_url} name={row.name} size={34} />
                     <div className="min-w-0">
                       <Link href={`/players/${row.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">

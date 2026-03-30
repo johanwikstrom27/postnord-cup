@@ -143,8 +143,8 @@ export default function NavBar() {
       <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-gradient-to-r from-[#0b1020]/80 to-[#0b1626]/80 backdrop-blur-xl shadow-lg">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           {/* Brand */}
-          <Link href={hrefFor("/")} className="flex min-w-0 flex-1 items-center gap-3 pr-2">
-            <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-visible sm:h-[68px] sm:w-[68px]">
+          <Link href={hrefFor("/")} className="flex min-w-0 flex-1 items-center gap-2.5 pr-2">
+            <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-visible sm:h-[60px] sm:w-[60px]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/icons/pncuplogga-v4.png"

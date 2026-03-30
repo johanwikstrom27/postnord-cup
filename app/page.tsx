@@ -326,6 +326,34 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
   );
 }
 
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1) {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/45 bg-amber-300/12 text-sm font-semibold text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]">
+        1
+      </div>
+    );
+  }
+
+  if (rank === 2) {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/35 bg-slate-200/10 text-sm font-semibold text-slate-100 shadow-[0_0_0_1px_rgba(226,232,240,0.08)]">
+        2
+      </div>
+    );
+  }
+
+  if (rank === 3) {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-300/35 bg-orange-300/10 text-sm font-semibold text-orange-100 shadow-[0_0_0_1px_rgba(253,186,116,0.08)]">
+        3
+      </div>
+    );
+  }
+
+  return <div className="w-8 text-white/60">{rank}</div>;
+}
+
 function FinishedHighlightCard({
   href,
   kicker,
@@ -1171,7 +1199,7 @@ export default async function Page({
                   className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="w-8 text-white/60">{row.displayRank}</div>
+                    <RankBadge rank={row.displayRank} />
                     <AvatarRound url={row.avatar_url} name={row.name} size={34} />
                     <div className="min-w-0">
                       <Link href={`/players/${row.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">

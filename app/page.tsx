@@ -285,6 +285,7 @@ function FinishedHighlightCard({
   subtitle,
   person,
   children,
+  className,
 }: {
   href: string;
   kicker: string;
@@ -292,11 +293,15 @@ function FinishedHighlightCard({
   subtitle: string;
   person: SummaryPerson | null;
   children?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <Link
       href={href}
-      className="group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(10,14,24,0.82))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,24,0.90))]"
+      className={[
+        "group block min-w-0 overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(10,14,24,0.82))] transition hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(10,14,24,0.90))]",
+        className ?? "",
+      ].join(" ")}
     >
       <div className="flex min-h-[220px] flex-col justify-between p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
@@ -378,11 +383,11 @@ function podiumSymbol(placing: number) {
   if (placing === 1) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src="/icons/final.png" alt="Pokalen" className="h-14 w-14 object-contain sm:h-16 sm:w-16" />
+      <img src="/icons/final.png" alt="Pokalen" className="h-28 w-28 object-contain sm:h-32 sm:w-32" />
     );
   }
-  if (placing === 2) return <span className="text-5xl leading-none sm:text-6xl">🥈</span>;
-  return <span className="text-5xl leading-none sm:text-6xl">🥉</span>;
+  if (placing === 2) return <span className="text-4xl leading-none sm:text-5xl">🥈</span>;
+  return <span className="text-4xl leading-none sm:text-5xl">🥉</span>;
 }
 
 function FinishedPodiumSection({
@@ -451,7 +456,15 @@ function FinishedPodiumSection({
                 className="group block min-w-0"
               >
                 <div className="flex min-h-[220px] flex-col items-center px-2 pb-0 pt-4 text-center sm:px-4">
-                  <AvatarRound url={avatar} name={name} size={place === 1 ? 72 : 58} />
+                  <div
+                    className={
+                      place === 1
+                        ? "rounded-full bg-[radial-gradient(circle,rgba(250,214,110,0.30)_0%,rgba(250,214,110,0.08)_55%,transparent_75%)] p-[6px] shadow-[0_0_40px_rgba(245,204,96,0.35)]"
+                        : ""
+                    }
+                  >
+                    <AvatarRound url={avatar} name={name} size={place === 1 ? 72 : 58} />
+                  </div>
 
                   <div className="mt-3 min-w-0">
                     <div className="text-xs font-semibold leading-tight text-white break-words sm:text-sm">{name}</div>
@@ -706,7 +719,10 @@ export default async function Page({
       ? results.find((r) => r.event_id === finalEvent.id && r.placering === 1 && !r.did_not_play) ?? null
       : null;
   const finalWinner = finalWinnerRow ? playerMeta.get(finalWinnerRow.season_player_id) ?? null : null;
+  const finalWinnerStats =
+    finalWinner ? leaderboard.find((player) => player.person_id === finalWinner.person_id) ?? null : null;
   const seasonFinished = Boolean(finalEvent?.locked && finalWinner);
+  const sameChampion = Boolean(finalWinner && leader && finalWinner.person_id === leader.person_id);
 
   const playedEventCount = lockedEvents.length;
   const fullAttendancePlayers =
@@ -818,7 +834,7 @@ export default async function Page({
           <div className="min-w-0">
             {seasonFinished ? (
               <div className="mb-2 inline-flex items-center rounded-full border border-emerald-300/15 bg-emerald-300/10 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-emerald-100">
-                Säsongen avgjord
+                Säsongen avslutad
               </div>
             ) : null}
             <h1 className="text-3xl font-semibold tracking-tight leading-tight break-words sm:text-4xl">
@@ -834,32 +850,54 @@ export default async function Page({
           <FinishedPodiumSection event={finalEvent} rows={top3} seasonQuery={seasonQuery} />
 
           <section className="grid gap-4 lg:grid-cols-3">
-            <FinishedHighlightCard
-              href={`/events/${finalEvent.id}${seasonQuery}`}
-              kicker="Säsongens mästare"
-              title={finalWinner.name}
-              subtitle={`Vann ${finalEvent.name}`}
-              person={finalWinner}
-            >
-              <FactTile label="Avgjord" value={fmtDateShort(finalEvent.starts_at)} />
-              <FactTile label="Finalbana" value={finalEvent.course ?? "—"} />
-            </FinishedHighlightCard>
-
-            {leader ? (
+            {sameChampion && leader ? (
               <FinishedHighlightCard
                 href={`/leaderboard${seasonQuery}`}
-                kicker="Vinnare av grundserien"
+                kicker="Säsongens dominant"
                 title={leader.name}
-                subtitle={`${leader.total.toLocaleString("sv-SE")} poäng i slutställningen`}
+                subtitle="Vann både PostNord Cup Final och grundserien"
                 person={leader}
+                className="lg:col-span-2"
               >
                 <FactTile label="Spelade" value={`${leader.played.toLocaleString("sv-SE")} tävlingar`} />
-                <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
+                <FactTile label="Pokaler" value={`${leader.wins.toLocaleString("sv-SE")} vinster`} />
               </FinishedHighlightCard>
             ) : (
-              <div className="rounded-[28px] border border-white/10 bg-black/20 p-5 text-white/60 sm:p-6">
-                Ingen grundserievinnare ännu
-              </div>
+              <>
+                <FinishedHighlightCard
+                  href={`/events/${finalEvent.id}${seasonQuery}`}
+                  kicker="Säsongens mästare"
+                  title={finalWinner.name}
+                  subtitle={`Vann ${finalEvent.name}`}
+                  person={finalWinner}
+                >
+                  <FactTile
+                    label="Spelade"
+                    value={`${(finalWinnerStats?.played ?? 0).toLocaleString("sv-SE")} tävlingar`}
+                  />
+                  <FactTile
+                    label="Pokaler"
+                    value={`${(finalWinnerStats?.wins ?? 0).toLocaleString("sv-SE")} vinster`}
+                  />
+                </FinishedHighlightCard>
+
+                {leader ? (
+                  <FinishedHighlightCard
+                    href={`/leaderboard${seasonQuery}`}
+                    kicker="Vinnare av grundserien"
+                    title={leader.name}
+                    subtitle={`${leader.total.toLocaleString("sv-SE")} poäng i slutställningen`}
+                    person={leader}
+                  >
+                    <FactTile label="Spelade" value={`${leader.played.toLocaleString("sv-SE")} tävlingar`} />
+                    <FactTile label="Pallplatser" value={`${leader.podiums.toLocaleString("sv-SE")} totalt`} />
+                  </FinishedHighlightCard>
+                ) : (
+                  <div className="rounded-[28px] border border-white/10 bg-black/20 p-5 text-white/60 sm:p-6">
+                    Ingen grundserievinnare ännu
+                  </div>
+                )}
+              </>
             )}
 
             <FinishedStatsCard

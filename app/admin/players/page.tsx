@@ -5,6 +5,14 @@ import { supabaseServer } from "@/lib/supabase";
 
 type SeasonRow = { id: string; name: string; created_at: string };
 type PersonRow = { id: string; name: string; avatar_url: string | null };
+type SeasonPlayerListRow = {
+  id: string;
+  hcp: number;
+  people:
+    | { id: string; name: string; avatar_url: string | null }
+    | Array<{ id: string; name: string; avatar_url: string | null }>
+    | null;
+};
 
 async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
   if (requestedSeasonId) {
@@ -53,7 +61,10 @@ export default async function AdminSeasonPlayersPage({
     .eq("season_id", season.id)
     .order("created_at", { ascending: true });
 
-  const rows = (listResp.data ?? []) as any[];
+  const rows = ((listResp.data ?? []) as SeasonPlayerListRow[]).map((row) => ({
+    ...row,
+    people: Array.isArray(row.people) ? row.people[0] ?? null : row.people ?? null,
+  }));
 
   return (
     <main className="space-y-6">
@@ -160,7 +171,7 @@ export default async function AdminSeasonPlayersPage({
 
       {/* Lista */}
       <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        {rows.map((r: any) => (
+        {rows.map((r) => (
           <div
             key={r.id}
             className="flex flex-col gap-3 border-b border-white/10 px-4 py-4 last:border-b-0 md:flex-row md:items-center md:justify-between"

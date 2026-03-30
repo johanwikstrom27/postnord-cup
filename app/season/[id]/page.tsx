@@ -1,6 +1,5 @@
 export const runtime = "nodejs";
 
-import HomePage from "@/app/page";
 import { supabaseServer } from "@/lib/supabase";
 
 type SeasonRow = { id: string; name: string; created_at: string };
@@ -34,7 +33,7 @@ export default async function SeasonViewPage({
         <div className="text-sm text-white/60">Historik</div>
         <h1 className="text-3xl font-semibold tracking-tight">{season.name}</h1>
         <p className="mt-2 text-sm text-white/70">
-          Du tittar på en historisk säsong. Hem-sidan visar alltid senaste säsongen.
+          Du tittar på en historisk säsong. Använd länkarna nedan för att öppna samma säsong i övriga vyer.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2">

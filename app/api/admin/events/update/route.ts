@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 
+type EventPatch = {
+  name: string;
+  course: string | null;
+  image_url: string | null;
+  setting_wind: string | null;
+  setting_tee_meters: number | null;
+  setting_pins: string | null;
+  description: string | null;
+  event_type?: string;
+  starts_at?: string;
+};
+
 export async function POST(req: NextRequest) {
   const sb = supabaseServer();
   const form = await req.formData();
@@ -24,20 +36,35 @@ export async function POST(req: NextRequest) {
 
   const setting_pins = String(form.get("setting_pins") ?? "").trim() || null;
   const description = String(form.get("description") ?? "").trim() || null;
+  const eventResp = await sb
+    .from("events")
+    .select("id,event_type")
+    .eq("id", event_id)
+    .single();
 
-  const locked = form.get("locked") === "on";
+  if (eventResp.error || !eventResp.data) {
+    return NextResponse.redirect(new URL("/admin/events", req.url));
+  }
 
-  const patch: any = {
+  const resultCountResp = await sb
+    .from("results")
+    .select("event_id", { count: "exact", head: true })
+    .eq("event_id", event_id);
+  const hasResults = Number(resultCountResp.count ?? 0) > 0;
+
+  const patch: EventPatch = {
     name,
-    event_type,
     course,
     image_url,
     setting_wind,
     setting_tee_meters: Number.isNaN(setting_tee_meters) ? null : setting_tee_meters,
     setting_pins,
     description,
-    locked,
   };
+
+  if (!hasResults) {
+    patch.event_type = event_type;
+  }
 
   if (starts_at) patch.starts_at = starts_at;
 

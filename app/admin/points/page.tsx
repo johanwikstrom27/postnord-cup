@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
 
 type SeasonRow = { id: string; name: string; created_at: string };
-type RulesRow = { season_id: string; final_start_scores: any };
+type RulesRow = { season_id: string; final_start_scores: number[] | null };
 type PointsRow = { event_type: string; placering: number; poang: number };
 
 async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
@@ -52,8 +52,11 @@ export default async function AdminPointsPage({
   const seasonQuery = `?season=${encodeURIComponent(season.id)}`;
 
   // points_table
-  const ptsResp = await sb.from("points_table").select("event_type,placering,poang");
-  const ptsRows = (ptsResp.data ?? []) as any[] as PointsRow[];
+  const ptsResp = await sb
+    .from("points_table")
+    .select("event_type,placering,poang")
+    .eq("season_id", season.id);
+  const ptsRows = (ptsResp.data ?? []) as PointsRow[];
 
   const map = new Map<string, Map<number, number>>();
   for (const r of ptsRows) {

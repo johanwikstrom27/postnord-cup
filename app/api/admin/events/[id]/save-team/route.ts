@@ -8,6 +8,24 @@ type TeamInput = {
   lag_score: number | null;     // lagets bruttoslag (krävs om minst 1 spelare)
 };
 
+type PointsRow = { placering: number | null; poang: number | null };
+
+type ResultUpsertRow = {
+  event_id: string;
+  season_player_id: string;
+  gross_strokes: null;
+  net_strokes: null;
+  adjusted_score: null;
+  hcp_strokes: number;
+  lag_nr: number;
+  lag_score: number | null;
+  placering: number | null;
+  poang: number;
+  did_not_play: boolean;
+  disqualified: boolean;
+  placering_override: null;
+};
+
 function rankTeams(teams: Array<{ lag_nr: number; score: number }>) {
   // lagplacering: 1,2,2,4...
   const eligible = teams.slice().sort((a, b) => a.score - b.score);
@@ -96,7 +114,7 @@ export async function POST(
   }
 
   const ptsMap = new Map<number, number>();
-  for (const p of (ptsResp.data ?? []) as any[]) {
+  for (const p of (ptsResp.data ?? []) as PointsRow[]) {
     ptsMap.set(Number(p.placering), Number(p.poang));
   }
 
@@ -106,7 +124,7 @@ export async function POST(
   );
 
   // 5) Skriv results för spelarna i lagen
-  const upserts: any[] = [];
+  const upserts: ResultUpsertRow[] = [];
 
   for (const t of activeTeams) {
     const placing = placementByTeam.get(t.lag_nr) ?? null;

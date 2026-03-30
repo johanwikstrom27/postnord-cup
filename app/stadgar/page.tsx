@@ -10,10 +10,9 @@ type RulesRow = {
   vanlig_best_of: number | null;
   major_best_of: number | null;
   lagtavling_best_of: number | null;
-
-  // kan finnas i din DB
-  hcp0_max?: number | null;
-  hcp2_max?: number | null;
+  hcp_zero_max?: number | null;
+  hcp_two_max?: number | null;
+  hcp_four_min?: number | null;
 };
 
 type SPRow = {
@@ -23,17 +22,36 @@ type SPRow = {
   people: { name: string; avatar_url: string | null } | null;
 };
 
+type SPJoinRow = {
+  id: string;
+  person_id: string;
+  hcp: number;
+  people:
+    | { name: string; avatar_url: string | null }
+    | Array<{ name: string; avatar_url: string | null }>
+    | null;
+};
+
 type PointsRow = {
   event_type: string;
-  placing: number;
-  points: number;
+  placering: number;
+  poang: number;
 };
 
 function fmtInt(n: number) {
   return n.toLocaleString("sv-SE");
 }
 
-async function resolveSeason(sb: ReturnType<typeof supabaseServer>) {
+async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
+  if (requestedSeasonId) {
+    const requested = await sb
+      .from("seasons")
+      .select("id,name,created_at,is_current")
+      .eq("id", requestedSeasonId)
+      .single();
+    if (requested.data) return requested.data as SeasonRow;
+  }
+
   const cur = await sb
     .from("seasons")
     .select("id,name,created_at,is_current")
@@ -49,12 +67,12 @@ async function resolveSeason(sb: ReturnType<typeof supabaseServer>) {
     .limit(1)
     .single();
 
-  return (latest.data as SeasonRow) ?? null;
+  return (latest.data as SeasonRow | null) ?? null;
 }
 
-function pnHcpSlag(hcp: number, hcp0Max: number, hcp2Max: number) {
-  if (hcp <= hcp0Max) return 0;
-  if (hcp <= hcp2Max) return 2;
+function pnHcpSlag(hcp: number, hcpZeroMax: number, hcpTwoMax: number, hcpFourMin: number) {
+  if (hcp <= hcpZeroMax) return 0;
+  if (hcp < hcpFourMin && hcp <= hcpTwoMax) return 2;
   return 4;
 }
 
@@ -113,15 +131,20 @@ function pointsFallback(eventType: string): { placing: number; points: number }[
   ];
 }
 
-export default async function StadgarPage() {
+export default async function StadgarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ season?: string }>;
+}) {
   const sb = supabaseServer();
-  const season = await resolveSeason(sb);
+  const sp = await searchParams;
+  const season = await resolveSeason(sb, sp?.season ?? null);
   if (!season) return <div className="text-white/70">Ingen säsong hittades.</div>;
 
   // Regler (best-of + HCP-gränser)
   const rulesResp = await sb
     .from("season_rules")
-    .select("vanlig_best_of,major_best_of,lagtavling_best_of,hcp0_max,hcp2_max")
+    .select("vanlig_best_of,major_best_of,lagtavling_best_of,hcp_zero_max,hcp_two_max,hcp_four_min")
     .eq("season_id", season.id)
     .single();
 
@@ -131,8 +154,9 @@ export default async function StadgarPage() {
   const majorBest = Number(rules?.major_best_of ?? 3);
   const lagBest = Number(rules?.lagtavling_best_of ?? 2);
 
-  const hcp0Max = Number(rules?.hcp0_max ?? 10.5);
-  const hcp2Max = Number(rules?.hcp2_max ?? 15.5);
+  const hcp0Max = Number(rules?.hcp_zero_max ?? 10.5);
+  const hcp2Max = Number(rules?.hcp_two_max ?? 15.5);
+  const hcp4Min = Number(rules?.hcp_four_min ?? 15.6);
 
   // Spelare
   const spResp = await sb
@@ -141,27 +165,27 @@ export default async function StadgarPage() {
     .eq("season_id", season.id)
     .order("hcp", { ascending: true });
 
-  const players = ((spResp.data ?? []) as any[]).map((p) => ({
+  const players = ((spResp.data ?? []) as unknown as SPJoinRow[]).map((p) => ({
     id: String(p.id),
     person_id: String(p.person_id),
     hcp: Number(p.hcp ?? 0),
-    people: p.people ?? null,
+    people: Array.isArray(p.people) ? p.people[0] ?? null : p.people ?? null,
   })) as SPRow[];
 
   // Poängtabell (DB eller fallback)
   const ptResp = await sb
     .from("points_table")
-    .select("event_type,placing,points")
+    .select("event_type,placering,poang")
     .eq("season_id", season.id)
     .order("event_type", { ascending: true })
-    .order("placing", { ascending: true });
+    .order("placering", { ascending: true });
 
   const pointsRows = (ptResp.data as PointsRow[] | null) ?? [];
 
   const pointsFor = (eventType: "VANLIG" | "MAJOR" | "LAGTÄVLING") => {
     const fromDb = pointsRows
       .filter((r) => r.event_type === eventType)
-      .map((r) => ({ placing: Number(r.placing), points: Number(r.points) }))
+      .map((r) => ({ placing: Number(r.placering), points: Number(r.poang) }))
       .sort((a, b) => a.placing - b.placing);
 
     return fromDb.length ? fromDb : pointsFallback(eventType);
@@ -214,7 +238,7 @@ export default async function StadgarPage() {
           PN-HCP = antal slag per tävling enligt säsongens HCP-gränser:
           <span className="ml-2 whitespace-nowrap">0–{hcp0Max.toFixed(1)} ⇒ 0 slag</span>,{" "}
           <span className="whitespace-nowrap">{(hcp0Max + 0.1).toFixed(1)}–{hcp2Max.toFixed(1)} ⇒ 2 slag</span>,{" "}
-          <span className="whitespace-nowrap">{(hcp2Max + 0.1).toFixed(1)}+ ⇒ 4 slag</span>.
+          <span className="whitespace-nowrap">{hcp4Min.toFixed(1)}+ ⇒ 4 slag</span>.
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -229,7 +253,7 @@ export default async function StadgarPage() {
             <tbody className="divide-y divide-white/10">
               {players.map((p) => {
                 const name = p.people?.name ?? "Okänd";
-                const slag = pnHcpSlag(p.hcp, hcp0Max, hcp2Max);
+                const slag = pnHcpSlag(p.hcp, hcp0Max, hcp2Max, hcp4Min);
                 return (
                   <tr key={p.person_id}>
                     <td className="px-3 py-2">{name}</td>

@@ -24,6 +24,16 @@ type SeasonPlayerJoinRow = {
   people: { name: string; avatar_url: string | null } | null;
 };
 
+type SeasonPlayerJoinRespRow = {
+  id: string;
+  person_id: string;
+  hcp: number;
+  people:
+    | { name: string; avatar_url: string | null }
+    | Array<{ name: string; avatar_url: string | null }>
+    | null;
+};
+
 type ResultExistingRow = {
   season_player_id: string;
   gross_strokes: number | null;
@@ -115,7 +125,10 @@ export default async function AdminEventDetailPage({
     .select("id,person_id,hcp,people(name,avatar_url)")
     .eq("season_id", event.season_id);
 
-  const seasonPlayers = (spResp.data ?? []) as any[] as SeasonPlayerJoinRow[];
+  const seasonPlayers = ((spResp.data ?? []) as SeasonPlayerJoinRespRow[]).map((row) => ({
+    ...row,
+    people: Array.isArray(row.people) ? row.people[0] ?? null : row.people ?? null,
+  })) as SeasonPlayerJoinRow[];
 
   // 3) Existing results for prefill
   const resResp = await sb
@@ -123,7 +136,7 @@ export default async function AdminEventDetailPage({
     .select("season_player_id,gross_strokes,did_not_play,override_placing,lag_nr,lag_score")
     .eq("event_id", event.id);
 
-  const existing = (resResp.data ?? []) as any[] as ResultExistingRow[];
+  const existing = (resResp.data ?? []) as ResultExistingRow[];
   const existingBySp = new Map<string, ResultExistingRow>();
   for (const r of existing) existingBySp.set(String(r.season_player_id), r);
 
@@ -196,7 +209,7 @@ export default async function AdminEventDetailPage({
       .select("season_player_id,start_score")
       .eq("event_id", event.id);
 
-    startScores = (ssResp.data ?? []) as any[] as StartScoreRow[];
+    startScores = (ssResp.data ?? []) as StartScoreRow[];
   }
 
   return (

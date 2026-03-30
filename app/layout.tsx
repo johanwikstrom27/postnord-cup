@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import NavBar from "@/components/NavBar";
 
 /**
@@ -9,11 +9,14 @@ export const metadata: Metadata = {
   title: "PostNord Cup",
   description: "PostNord Cup – Trackman @ Troxhammar GK",
   manifest: "/manifest.json",
-  themeColor: "#0b1220",
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b1220",
 };
 
 export default function RootLayout({
@@ -29,7 +32,6 @@ export default function RootLayout({
 
         {/* Fallbacks (bra för äldre browsers) */}
         <link rel="icon" href="/favicon.ico" />
-        <meta name="theme-color" content="#0b1220" />
       </head>
 
       <body className="min-h-screen bg-[#070b14] text-white antialiased">

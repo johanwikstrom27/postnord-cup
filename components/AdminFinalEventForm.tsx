@@ -27,9 +27,18 @@ type Entry = {
   lag_score: number | null;
 };
 
+type SavePayload = {
+  entries: Entry[];
+  lock?: boolean;
+  unlock?: boolean;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Nätverksfel";
+}
+
 export default function AdminFinalEventForm({
   eventId,
-  eventName,
   isLocked,
   players,
   startScores,
@@ -54,7 +63,7 @@ export default function AdminFinalEventForm({
       season_player_id: p.season_player_id,
       gross_strokes: p.existing_gross ?? null,
       did_not_play: p.existing_dns ?? false,
-      override_placing: (p.existing_override ?? null) as any,
+      override_placing: p.existing_override ?? null,
       lag_nr: null,
       lag_score: null,
     }))
@@ -68,7 +77,7 @@ export default function AdminFinalEventForm({
     setBusy(true);
     setMsg(null);
 
-    const payload: any = { entries: rows };
+    const payload: SavePayload = { entries: rows };
     if (mode === "lock") payload.lock = true;
     if (mode === "unlock") payload.unlock = true;
 
@@ -91,8 +100,8 @@ export default function AdminFinalEventForm({
       else setMsg("Sparat ✅");
 
       window.location.reload();
-    } catch (e: any) {
-      setMsg(`Fel: ${e?.message ?? "Nätverksfel"}`);
+    } catch (error: unknown) {
+      setMsg(`Fel: ${getErrorMessage(error)}`);
       setBusy(false);
     }
   }

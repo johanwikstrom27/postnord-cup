@@ -127,7 +127,9 @@ export default function SpinTheWheelClient({ players }: Props) {
     if (tab === "singles") {
       const sc = clamp(simCount, 2, 3);
       setSimCount(sc);
-      setSims(sc === 2 ? [sims[0] ?? [], sims[1] ?? []] : [sims[0] ?? [], sims[1] ?? [], sims[2] ?? []]);
+      setSims((prev) =>
+        sc === 2 ? [prev[0] ?? [], prev[1] ?? []] : [prev[0] ?? [], prev[1] ?? [], prev[2] ?? []]
+      );
     } else {
       const sc = clamp(teamSimCount, 2, 3);
       setTeamSimCount(sc);

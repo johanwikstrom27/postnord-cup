@@ -18,7 +18,23 @@ type EventRow = {
   locked: boolean;
 };
 
-type WinnerRowAny = any;
+type WinnerPersonRow = { name: string; avatar_url: string | null };
+
+type WinnerSeasonPlayerRow = {
+  person_id: string;
+  people: WinnerPersonRow | null;
+};
+
+type WinnerRespRow = {
+  event_id: string;
+  season_players: {
+    person_id: string;
+    people: WinnerPersonRow | WinnerPersonRow[] | null;
+  } | Array<{
+    person_id: string;
+    people: WinnerPersonRow | WinnerPersonRow[] | null;
+  }> | null;
+};
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -147,7 +163,24 @@ export default async function OverviewPage({
       .in("event_id", lockedIds)
       .eq("placering", 1);
 
-    const rows = (wResp.data ?? []) as WinnerRowAny[];
+    const rows = ((wResp.data ?? []) as WinnerRespRow[]).map((row) => {
+      const seasonPlayer = Array.isArray(row.season_players)
+        ? row.season_players[0] ?? null
+        : row.season_players ?? null;
+
+      return {
+        ...row,
+        season_players: seasonPlayer
+          ? {
+              ...seasonPlayer,
+              people: Array.isArray(seasonPlayer.people)
+                ? seasonPlayer.people[0] ?? null
+                : seasonPlayer.people ?? null,
+            }
+          : null,
+      };
+    }) as Array<{ event_id: string; season_players: WinnerSeasonPlayerRow | null }>;
+
     for (const r of rows) {
       const eventId = String(r.event_id);
       const spx = r.season_players;

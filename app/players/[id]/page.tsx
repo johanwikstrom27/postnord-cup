@@ -51,6 +51,23 @@ type TrophyWinRow = {
   } | null;
 };
 
+type TrophyEventRow = {
+  id: string;
+  season_id: string;
+  name: string;
+  event_type: string;
+  starts_at: string;
+  locked: boolean;
+};
+
+type TrophyWinRespRow = {
+  event_id: string;
+  poang: number | null;
+  events: TrophyEventRow | TrophyEventRow[] | null;
+};
+
+type SeasonPlayerIdRow = { id: string };
+
 async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
   if (requestedSeasonId) {
     const r = await sb.from("seasons").select("id,name,created_at").eq("id", requestedSeasonId).single();
@@ -94,11 +111,6 @@ function iconForType(t: string) {
   if (t === "MAJOR") return "/icons/major-1.png";
   if (t === "LAGTÄVLING") return "/icons/lagtavling-1.png";
   return "/icons/vanlig-1.png";
-}
-
-function fmtShortDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString("sv-SE", { month: "short", day: "numeric" });
 }
 
 // ✅ ENDA versionen av denna (inga dubletter)
@@ -273,7 +285,7 @@ export default async function PlayerPage({
      Troféskåp-data (alla säsonger)
   ============================ */
   const allSpResp = await sb.from("season_players").select("id").eq("person_id", personId);
-  const allSeasonPlayerIds = (allSpResp.data ?? []).map((x: any) => String(x.id));
+  const allSeasonPlayerIds = ((allSpResp.data ?? []) as SeasonPlayerIdRow[]).map((x) => String(x.id));
 
   let winRows: TrophyWinRow[] = [];
   if (allSeasonPlayerIds.length) {
@@ -284,7 +296,10 @@ export default async function PlayerPage({
       .eq("placering", 1)
       .eq("did_not_play", false);
 
-    winRows = (wResp.data ?? []) as any as TrophyWinRow[];
+    winRows = ((wResp.data ?? []) as TrophyWinRespRow[]).map((row) => ({
+      ...row,
+      events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+    })) as TrophyWinRow[];
   }
 
   const lockedWins = winRows.filter((w) => w.events?.locked === true && !!w.events?.starts_at);

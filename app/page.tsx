@@ -10,7 +10,6 @@ import { supabaseServer } from "@/lib/supabase";
    (endast dessa två rader)
 =========================== */
 const LOGO_MOBILE = 72;  // px
-const LOGO_DESKTOP = 92; // px
 
 /* ===========================
    Types
@@ -27,7 +26,19 @@ type SeasonPlayerRow = {
   id: string;
   person_id: string;
   hcp: number;
-  people: { name: string; avatar_url: string | null } | null;
+  people: PersonRow | null;
+};
+
+type PersonRow = {
+  name: string;
+  avatar_url: string | null;
+};
+
+type SeasonPlayerRespRow = {
+  id: string;
+  person_id: string;
+  hcp: number;
+  people: PersonRow | PersonRow[] | null;
 };
 
 type EventRow = {
@@ -61,8 +72,27 @@ type TopRow = {
   lag_score: number | null;
   season_players: {
     person_id: string;
-    people: { name: string; avatar_url: string | null } | null;
+    people: PersonRow | null;
   } | null;
+};
+
+type TopRespRow = {
+  placering: number | null;
+  poang: number | null;
+  gross_strokes: number | null;
+  net_strokes: number | null;
+  adjusted_score: number | null;
+  lag_score: number | null;
+  season_players:
+    | {
+        person_id: string;
+        people: PersonRow | PersonRow[] | null;
+      }
+    | Array<{
+        person_id: string;
+        people: PersonRow | PersonRow[] | null;
+      }>
+    | null;
 };
 
 /* ===========================
@@ -353,11 +383,11 @@ export default async function Page({
 
   // players
   const spResp = await sb.from("season_players").select("id,person_id,hcp,people(name,avatar_url)").eq("season_id", season.id);
-  const players = ((spResp.data ?? []) as any[]).map((p) => ({
+  const players = ((spResp.data ?? []) as SeasonPlayerRespRow[]).map((p) => ({
     id: String(p.id),
     person_id: String(p.person_id),
     hcp: Number(p.hcp ?? 0),
-    people: p.people ?? null,
+    people: Array.isArray(p.people) ? p.people[0] ?? null : p.people ?? null,
   })) as SeasonPlayerRow[];
   const spIds = players.map((p) => p.id);
 
@@ -396,7 +426,7 @@ export default async function Page({
       .in("event_id", lockedEventIds)
       .in("season_player_id", spIds);
 
-    results = (resResp.data ?? []) as any[] as ResRow[];
+    results = (resResp.data ?? []) as ResRow[];
   }
 
   const playerMeta = new Map(
@@ -495,7 +525,23 @@ export default async function Page({
       .order("placering", { ascending: true })
       .limit(3);
 
-    top3 = (topResp.data ?? []) as any as TopRow[];
+    top3 = ((topResp.data ?? []) as TopRespRow[]).map((row) => {
+      const seasonPlayer = Array.isArray(row.season_players)
+        ? row.season_players[0] ?? null
+        : row.season_players ?? null;
+
+      return {
+        ...row,
+        season_players: seasonPlayer
+          ? {
+              ...seasonPlayer,
+              people: Array.isArray(seasonPlayer.people)
+                ? seasonPlayer.people[0] ?? null
+                : seasonPlayer.people ?? null,
+            }
+          : null,
+      };
+    }) as TopRow[];
   }
 
   return (

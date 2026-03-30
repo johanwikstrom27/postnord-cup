@@ -57,6 +57,13 @@ export default async function EditEventPage({
     );
   }
 
+  const resultsResp = await sb
+    .from("results")
+    .select("event_id", { count: "exact", head: true })
+    .eq("event_id", event.id);
+
+  const hasResults = Number(resultsResp.count ?? 0) > 0;
+
   return (
     <main className="space-y-6">
       <div className="flex items-center justify-between">
@@ -92,13 +99,17 @@ export default async function EditEventPage({
               <select
                 name="event_type"
                 defaultValue={event.event_type}
-                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3"
+                disabled={hasResults}
+                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 disabled:opacity-60"
               >
                 <option value="VANLIG">Vanlig</option>
                 <option value="MAJOR">Major</option>
                 <option value="LAGTÄVLING">Lagtävling</option>
                 <option value="FINAL">Final</option>
               </select>
+              {hasResults ? (
+                <div className="mt-1 text-xs text-white/50">Typ låses när resultat redan finns sparade.</div>
+              ) : null}
             </div>
 
             <div>
@@ -177,14 +188,8 @@ export default async function EditEventPage({
             />
           </div>
 
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-white/80">
-              <input type="checkbox" name="locked" defaultChecked={event.locked} />
-              Låst (officiell)
-            </label>
-            <span className="text-xs text-white/50">
-              (Du kan låsa/låsa upp här också, men normalt görs det i resultatvyn.)
-            </span>
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70">
+            Låsning hanteras i resultatvyn så att poäng, placeringar och notiser hålls i sync.
           </div>
 
           <div className="flex gap-3">

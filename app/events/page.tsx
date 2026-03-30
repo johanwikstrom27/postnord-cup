@@ -23,6 +23,25 @@ type EventRow = {
 };
 
 type WinnerInfo = { person_id: string; name: string; avatar_url: string | null };
+type WinnerRespRow = {
+  event_id: string;
+  season_players:
+    | {
+        person_id: string;
+        people:
+          | { name: string; avatar_url: string | null }
+          | Array<{ name: string; avatar_url: string | null }>
+          | null;
+      }
+    | Array<{
+        person_id: string;
+        people:
+          | { name: string; avatar_url: string | null }
+          | Array<{ name: string; avatar_url: string | null }>
+          | null;
+      }>
+    | null;
+};
 
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
@@ -126,13 +145,14 @@ export default async function EventsPage({
       .in("event_id", lockedIds)
       .eq("placering", 1);
 
-    const rows = (wResp.data ?? []) as any[];
+    const rows = (wResp.data ?? []) as WinnerRespRow[];
     for (const r of rows) {
       const eventId = String(r.event_id);
-      const sp = r.season_players;
+      const sp = Array.isArray(r.season_players) ? r.season_players[0] ?? null : r.season_players ?? null;
+      const person = sp?.people ? (Array.isArray(sp.people) ? sp.people[0] ?? null : sp.people) : null;
       const personId = sp?.person_id ? String(sp.person_id) : null;
-      const name = sp?.people?.name ? String(sp.people.name) : null;
-      const avatarUrl = sp?.people?.avatar_url ? String(sp.people.avatar_url) : null;
+      const name = person?.name ? String(person.name) : null;
+      const avatarUrl = person?.avatar_url ? String(person.avatar_url) : null;
 
       if (!eventId || !personId || !name) continue;
 

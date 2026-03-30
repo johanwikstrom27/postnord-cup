@@ -3,6 +3,12 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 
+type PushSubscriptionRow = {
+  endpoint: string;
+  notify_results: boolean | null;
+  notify_leader: boolean | null;
+};
+
 export async function GET(req: Request) {
   const sb = supabaseServer();
   const url = new URL(req.url);
@@ -25,7 +31,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     subscribed: true,
-    notify_results: Boolean((data as any).notify_results),
-    notify_leader: Boolean((data as any).notify_leader),
+    notify_results: Boolean((data as PushSubscriptionRow).notify_results),
+    notify_leader: Boolean((data as PushSubscriptionRow).notify_leader),
   });
 }

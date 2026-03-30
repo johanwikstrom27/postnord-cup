@@ -11,6 +11,13 @@ type PlayerRow = {
   avatar_url: string | null;
 };
 
+type PersonRow = { name: string; avatar_url: string | null };
+
+type PlayerRespRow = {
+  id: string;
+  people: PersonRow | PersonRow[] | null;
+};
+
 export default async function WheelPage() {
   const sb = supabaseServer();
 
@@ -35,11 +42,15 @@ export default async function WheelPage() {
     .eq("season_id", seasonId);
 
   const players: PlayerRow[] =
-    (spResp.data ?? []).map((r: any) => ({
-      season_player_id: String(r.id),
-      name: String(r.people?.name ?? "Okänd"),
-      avatar_url: (r.people?.avatar_url as string | null) ?? null,
-    })) ?? [];
+    ((spResp.data ?? []) as PlayerRespRow[]).map((r) => {
+      const person = Array.isArray(r.people) ? r.people[0] ?? null : r.people ?? null;
+
+      return {
+        season_player_id: String(r.id),
+        name: String(person?.name ?? "Okänd"),
+        avatar_url: person?.avatar_url ?? null,
+      };
+    });
 
   // sort for nicer checkbox list
   players.sort((a, b) => a.name.localeCompare(b.name, "sv"));

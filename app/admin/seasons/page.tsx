@@ -16,9 +16,40 @@ type SPRow = {
   people: { name: string; avatar_url: string | null } | null;
 };
 
+type SPJoinRespRow = {
+  id: string;
+  person_id: string;
+  people:
+    | { name: string; avatar_url: string | null }
+    | Array<{ name: string; avatar_url: string | null }>
+    | null;
+};
+
 type EventRow = { id: string; event_type: string; locked: boolean };
 
 type ResRow = { season_player_id: string; event_id: string; poang: number | null; did_not_play: boolean };
+
+type FinalEventRow = { id: string; locked: boolean };
+
+type FinalWinnerRespRow = {
+  poang: number | null;
+  season_players:
+    | {
+        person_id: string;
+        people:
+          | { name: string; avatar_url: string | null }
+          | Array<{ name: string; avatar_url: string | null }>
+          | null;
+      }
+    | Array<{
+        person_id: string;
+        people:
+          | { name: string; avatar_url: string | null }
+          | Array<{ name: string; avatar_url: string | null }>
+          | null;
+      }>
+    | null;
+};
 
 function sumTopN(values: number[], n: number) {
   return values
@@ -50,13 +81,16 @@ async function computeSeriesLeader(sb: ReturnType<typeof supabaseServer>, season
     .select("id, person_id, people(name, avatar_url)")
     .eq("season_id", seasonId);
 
-  const sps = (spResp.data ?? []) as any[] as SPRow[];
+  const sps = ((spResp.data ?? []) as SPJoinRespRow[]).map((row) => ({
+    ...row,
+    people: Array.isArray(row.people) ? row.people[0] ?? null : row.people ?? null,
+  })) as SPRow[];
   if (!sps.length) return null;
 
   const spIds = sps.map((x) => String(x.id));
 
   const evResp = await sb.from("events").select("id,event_type,locked").eq("season_id", seasonId);
-  const events = (evResp.data ?? []) as any[] as EventRow[];
+  const events = (evResp.data ?? []) as EventRow[];
   const lockedEventIds = events.filter((e) => e.locked).map((e) => String(e.id));
   if (!lockedEventIds.length) return { name: "—", avatar_url: null, total: 0 };
 
@@ -69,7 +103,7 @@ async function computeSeriesLeader(sb: ReturnType<typeof supabaseServer>, season
     .in("event_id", lockedEventIds)
     .in("season_player_id", spIds);
 
-  const results = (resResp.data ?? []) as any[] as ResRow[];
+  const results = (resResp.data ?? []) as ResRow[];
 
   const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
   for (const id of spIds) bySp.set(id, { vanlig: [], major: [], lag: [] });
@@ -121,7 +155,7 @@ async function computeFinalWinnerIfLocked(sb: ReturnType<typeof supabaseServer>,
     .limit(1)
     .single();
 
-  const finalEvent = (finalResp.data as any) ?? null;
+  const finalEvent = (finalResp.data as FinalEventRow | null) ?? null;
   if (!finalEvent) return null;
   if (finalEvent.locked !== true) return null; // 👈 kräver låst final
 
@@ -136,14 +170,20 @@ async function computeFinalWinnerIfLocked(sb: ReturnType<typeof supabaseServer>,
     .limit(1)
     .single();
 
-  const row = (wResp.data as any) ?? null;
-  if (!row?.season_players?.person_id || !row?.season_players?.people?.name) return null;
+  const row = (wResp.data as FinalWinnerRespRow | null) ?? null;
+  const seasonPlayer = Array.isArray(row?.season_players) ? row?.season_players[0] ?? null : row?.season_players ?? null;
+  const person = seasonPlayer?.people
+    ? Array.isArray(seasonPlayer.people)
+      ? seasonPlayer.people[0] ?? null
+      : seasonPlayer.people
+    : null;
+  if (!seasonPlayer?.person_id || !person?.name) return null;
 
   return {
-    person_id: String(row.season_players.person_id),
-    name: String(row.season_players.people.name),
-    avatar_url: (row.season_players.people.avatar_url as string | null) ?? null,
-    total: Number(row.poang ?? 0), // visar finalpoäng (om du vill visa blankt kan vi sätta 0)
+    person_id: String(seasonPlayer.person_id),
+    name: String(person.name),
+    avatar_url: person.avatar_url ?? null,
+    total: Number(row?.poang ?? 0), // visar finalpoäng (om du vill visa blankt kan vi sätta 0)
   };
 }
 
@@ -158,12 +198,12 @@ export default async function AdminSeasonsPage() {
   const seasons = (seasonsResp.data as SeasonRow[] | null) ?? [];
 
   // ✅ Sortera säsonger kronologiskt (nyaste först) baserat på namn, t.ex. "2026/2027"
-const seasonYear = (name: string) => {
-  const m = name.match(/(19|20)\d{2}/);
-  return m ? Number(m[0]) : 0;
-};
+  const seasonYear = (name: string) => {
+    const m = name.match(/(19|20)\d{2}/);
+    return m ? Number(m[0]) : 0;
+  };
 
-seasons.sort((a, b) => seasonYear(b.name) - seasonYear(a.name));
+  seasons.sort((a, b) => seasonYear(b.name) - seasonYear(a.name));
 
   // Winner per season:
   // - current: serieledare

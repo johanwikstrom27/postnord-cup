@@ -7,6 +7,10 @@ type SeasonRow = { id: string; name: string; created_at: string; is_current: boo
 type Winner = { name: string; avatar_url: string | null; total: number } | null;
 type WinnerRow = { season_id: string; winner: Winner; label: string };
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Fel";
+}
+
 function Avatar({ url, name }: { url: string | null; name: string }) {
   return (
     <div className="h-12 w-12 overflow-hidden rounded-full border border-white/10 bg-white/5">
@@ -60,8 +64,8 @@ export default function AdminSeasonsClient({
       setMsg("✅ Ny säsong skapad!");
       setName("");
       window.location.reload();
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -81,8 +85,8 @@ export default function AdminSeasonsClient({
       if (!res.ok) throw new Error(j?.error ?? "Kunde inte sätta aktiv säsong");
       setMsg("✅ Aktiv säsong uppdaterad!");
       window.location.reload();
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
     } finally {
       setBusy(false);
     }

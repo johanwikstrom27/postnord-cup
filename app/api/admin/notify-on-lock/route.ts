@@ -5,6 +5,52 @@ import { supabaseServer } from "@/lib/supabase";
 import { sendToSubscribers } from "@/lib/push";
 import { areNotificationsPaused } from "@/lib/notificationPause";
 
+type RulesRow = {
+  vanlig_best_of: number | null;
+  major_best_of: number | null;
+  lagtavling_best_of: number | null;
+};
+
+type PlayerRespRow = {
+  id: string;
+  person_id: string;
+  people: { name: string } | Array<{ name: string }> | null;
+};
+
+type EventRespRow = {
+  id: string;
+  event_type: string;
+  locked: boolean;
+};
+
+type ResultRespRow = {
+  season_player_id: string;
+  event_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+};
+
+type EventDetailRow = {
+  id: string;
+  season_id: string;
+  name: string;
+  event_type: string;
+  course: string | null;
+  locked: boolean;
+};
+
+type WinnerRespRow = {
+  placering: number | null;
+  season_players:
+    | { person_id: string; people: { name: string } | Array<{ name: string }> | null }
+    | Array<{ person_id: string; people: { name: string } | Array<{ name: string }> | null }>
+    | null;
+};
+
+type LeaderStateRow = {
+  last_notified_leader_person_id: string | null;
+};
+
 function typeLabel(t: string) {
   if (t === "VANLIG") return "Vanlig";
   if (t === "MAJOR") return "Major";
@@ -26,18 +72,18 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
     .eq("season_id", seasonId)
     .single();
 
-  const rules = (rulesResp.data as any) ?? { vanlig_best_of: 4, major_best_of: 3, lagtavling_best_of: 2 };
+  const rules = (rulesResp.data as RulesRow | null) ?? { vanlig_best_of: 4, major_best_of: 3, lagtavling_best_of: 2 };
 
   const spResp = await sb
     .from("season_players")
     .select("id,person_id,people(name)")
     .eq("season_id", seasonId);
 
-  const players = (spResp.data ?? []) as any[];
+  const players = (spResp.data ?? []) as PlayerRespRow[];
   const spIds = players.map((p) => p.id);
 
   const evResp = await sb.from("events").select("id,event_type,locked").eq("season_id", seasonId);
-  const events = (evResp.data ?? []) as any[];
+  const events = (evResp.data ?? []) as EventRespRow[];
   const lockedIds = events.filter((e) => e.locked).map((e) => e.id);
 
   const typeByEvent = new Map<string, string>();
@@ -49,7 +95,7 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
     .in("event_id", lockedIds)
     .in("season_player_id", spIds);
 
-  const results = (resResp.data ?? []) as any[];
+  const results = (resResp.data ?? []) as ResultRespRow[];
 
   const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
   for (const p of players) bySp.set(p.id, { vanlig: [], major: [], lag: [] });
@@ -76,7 +122,8 @@ async function computeLeader(sb: ReturnType<typeof supabaseServer>, seasonId: st
       sumTopN(b.vanlig, Number(rules.vanlig_best_of ?? 4)) +
       sumTopN(b.major, Number(rules.major_best_of ?? 3)) +
       sumTopN(b.lag, Number(rules.lagtavling_best_of ?? 2));
-    return { person_id: p.person_id, name: p.people?.name ?? "Okänd", total };
+    const person = Array.isArray(p.people) ? p.people[0] ?? null : p.people ?? null;
+    return { person_id: p.person_id, name: person?.name ?? "Okänd", total };
   });
 
   totals.sort((a, b) => b.total - a.total);
@@ -103,7 +150,7 @@ export async function POST(req: Request) {
     .eq("id", eventId)
     .single();
 
-  const event = ev.data as any;
+  const event = (ev.data as EventDetailRow | null) ?? null;
   if (!event) return NextResponse.json({ error: "Event not found" }, { status: 404 });
   if (event.locked !== true) return NextResponse.json({ ok: true, skipped: "not locked" });
 
@@ -119,9 +166,17 @@ export async function POST(req: Request) {
     .eq("event_id", eventId)
     .eq("placering", 1);
 
-  const winners = (wResp.data ?? []) as any[];
+  const winners = (wResp.data ?? []) as WinnerRespRow[];
   const names = winners
-    .map((r) => r.season_players?.people?.name)
+    .map((r) => {
+      const seasonPlayer = Array.isArray(r.season_players) ? r.season_players[0] ?? null : r.season_players ?? null;
+      const person = seasonPlayer?.people
+        ? Array.isArray(seasonPlayer.people)
+          ? seasonPlayer.people[0] ?? null
+          : seasonPlayer.people
+        : null;
+      return person?.name ?? null;
+    })
     .filter(Boolean)
     .slice(0, event.event_type === "LAGTÄVLING" ? 2 : 1) as string[];
 
@@ -147,7 +202,7 @@ export async function POST(req: Request) {
       .eq("id", seasonId)
       .single();
 
-    const prev = (seasonResp.data as any)?.last_notified_leader_person_id ?? null;
+    const prev = (seasonResp.data as LeaderStateRow | null)?.last_notified_leader_person_id ?? null;
 
     if (String(prev ?? "") !== String(leader.person_id)) {
       await sendToSubscribers("leader", {

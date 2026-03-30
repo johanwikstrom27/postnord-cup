@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase";
 
+type PersonIdRow = { person_id: string };
+
 export async function POST(req: NextRequest) {
   const sb = supabaseServer();
   const form = await req.formData();
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
     .select("person_id")
     .eq("season_id", season_id);
 
-  const existing = new Set((curResp.data ?? []).map((r: any) => r.person_id as string));
+  const existing = new Set(((curResp.data ?? []) as PersonIdRow[]).map((r) => r.person_id));
 
   // 4) Insert endast saknade (skriver inte över befintliga HCP)
   const toInsert = prevRows

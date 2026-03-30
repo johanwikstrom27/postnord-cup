@@ -51,6 +51,20 @@ type ResultRow = {
 };
 
 type StartScoreRow = { season_player_id: string; start_score: number };
+type PersonNameRow = { name: string };
+type SeasonPlayerRespRow = {
+  id: string;
+  person_id: string;
+  hcp: number | null;
+  people: PersonNameRow | PersonNameRow[] | null;
+};
+type EventInfoRow = { event_type: string; locked: boolean };
+type ResultRespRow = {
+  season_player_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+  events: EventInfoRow | EventInfoRow[] | null;
+};
 type PrelimRow = {
   rank: number;
   baseRank: number;
@@ -130,7 +144,10 @@ async function computePrelimFinalStartlist(
     .select("id, person_id, hcp, people(name)")
     .eq("season_id", seasonId);
 
-  const sps = (spResp.data ?? []) as any[];
+  const sps = ((spResp.data ?? []) as SeasonPlayerRespRow[]).map((row) => ({
+    ...row,
+    people: Array.isArray(row.people) ? row.people[0] ?? null : row.people ?? null,
+  }));
   if (!sps.length) return [];
 
   const spIds = sps.map((x) => x.id);
@@ -140,7 +157,10 @@ async function computePrelimFinalStartlist(
     .select("season_player_id, poang, did_not_play, events(event_type, locked)")
     .in("season_player_id", spIds);
 
-  const all = (resResp.data ?? []) as any[];
+  const all = ((resResp.data ?? []) as ResultRespRow[]).map((row) => ({
+    ...row,
+    events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+  }));
 
   const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
   for (const p of sps) bySp.set(p.id, { vanlig: [], major: [], lag: [] });

@@ -8,18 +8,36 @@ import { supabaseServer } from "@/lib/supabase";
 type SeasonRow = { id: string; name: string; created_at: string; is_current?: boolean };
 type RulesRow = { vanlig_best_of: number | null; major_best_of: number | null; lagtavling_best_of: number | null };
 
+type PersonRow = { name: string; avatar_url: string | null };
+
 type SPRow = {
   id: string; // season_player_id
   person_id: string;
   hcp: number;
-  people: { name: string; avatar_url: string | null } | null;
+  people: PersonRow | null;
 };
+
+type SPRespRow = {
+  id: string;
+  person_id: string;
+  hcp: number;
+  people: PersonRow | PersonRow[] | null;
+};
+
+type EventInfoRow = { event_type: string; locked: boolean };
 
 type ResultRow = {
   season_player_id: string;
   poang: number | null;
   did_not_play: boolean;
-  events: { event_type: string; locked: boolean } | null;
+  events: EventInfoRow | null;
+};
+
+type ResultRespRow = {
+  season_player_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+  events: EventInfoRow | EventInfoRow[] | null;
 };
 
 function sumTopN(values: number[], n: number) {
@@ -91,11 +109,11 @@ export default async function LeaderboardPage({
     .select("id,person_id,hcp,people(name,avatar_url)")
     .eq("season_id", season.id);
 
-  const players = ((spResp.data ?? []) as any[]).map((p) => ({
+  const players = ((spResp.data ?? []) as SPRespRow[]).map((p) => ({
     id: String(p.id),
     person_id: String(p.person_id),
     hcp: Number(p.hcp ?? 0),
-    people: p.people ?? null,
+    people: Array.isArray(p.people) ? p.people[0] ?? null : p.people ?? null,
   })) as SPRow[];
 
   const spIds = players.map((p) => p.id);
@@ -108,7 +126,10 @@ export default async function LeaderboardPage({
       .select("season_player_id,poang,did_not_play,events(event_type,locked)")
       .in("season_player_id", spIds);
 
-    results = (resResp.data ?? []) as any as ResultRow[];
+    results = ((resResp.data ?? []) as ResultRespRow[]).map((row) => ({
+      ...row,
+      events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+    })) as ResultRow[];
   }
 
   // bucket per player

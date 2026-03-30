@@ -34,11 +34,6 @@ export default function NavBar() {
     return found?.label ?? "Meny";
   }, [pathname]);
 
-  // Close on route change
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
   // Close on ESC
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

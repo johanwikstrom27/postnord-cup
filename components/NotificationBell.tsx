@@ -4,6 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Prefs = { notify_results: boolean; notify_leader: boolean };
 
+type PushApiResponse = {
+  subscribed?: boolean;
+  notify_results?: boolean;
+  notify_leader?: boolean;
+  error?: string;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Fel";
+}
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -66,7 +77,7 @@ export default function NotificationBell() {
         setEndpoint(sub.endpoint);
 
         const res = await fetch(`/api/push/status?endpoint=${encodeURIComponent(sub.endpoint)}`);
-        const j = await res.json();
+        const j = (await res.json()) as PushApiResponse;
         if (j?.subscribed) {
           setPrefs({ notify_results: !!j.notify_results, notify_leader: !!j.notify_leader });
         }
@@ -92,7 +103,7 @@ export default function NotificationBell() {
         applicationServerKey: urlBase64ToUint8Array(vapid),
       });
 
-      const json = sub.toJSON() as any;
+      const json = sub.toJSON();
       const p256dh = json?.keys?.p256dh;
       const auth = json?.keys?.auth;
 
@@ -108,14 +119,14 @@ export default function NotificationBell() {
         }),
       });
 
-      const j = await r.json().catch(() => ({}));
+      const j = (await r.json().catch(() => ({}))) as PushApiResponse;
       if (!r.ok) throw new Error(j?.error ?? "Kunde inte spara subscription");
 
       setEnabled(true);
       setEndpoint(sub.endpoint);
       setMsg("✅ Notiser aktiverade!");
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -133,12 +144,12 @@ export default function NotificationBell() {
         body: JSON.stringify({ endpoint, ...prefs }),
       });
 
-      const j = await r.json().catch(() => ({}));
+      const j = (await r.json().catch(() => ({}))) as PushApiResponse;
       if (!r.ok) throw new Error(j?.error ?? "Kunde inte spara");
 
       setMsg("✅ Inställningar sparade!");
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -161,8 +172,8 @@ export default function NotificationBell() {
       setEnabled(false);
       setEndpoint("");
       setMsg("✅ Notiser avstängda");
-    } catch (e: any) {
-      setMsg(`❌ ${e?.message ?? "Fel"}`);
+    } catch (error: unknown) {
+      setMsg(`❌ ${getErrorMessage(error)}`);
     } finally {
       setBusy(false);
     }

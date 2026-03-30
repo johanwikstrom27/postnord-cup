@@ -7,6 +7,14 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase";
 
 type SeasonRow = { id: string; name: string; created_at: string };
+type EventListRow = {
+  id: string;
+  name: string;
+  event_type: string;
+  starts_at: string;
+  locked: boolean;
+  course: string | null;
+};
 
 async function resolveSeason(sb: ReturnType<typeof supabaseServer>, requestedSeasonId: string | null) {
   if (requestedSeasonId) {
@@ -57,7 +65,7 @@ export default async function AdminEvents({
     .eq("season_id", season.id)
     .order("starts_at", { ascending: true });
 
-  const events = (listResp.data ?? []) as any[];
+  const events = (listResp.data ?? []) as EventListRow[];
 
   return (
     <main className="space-y-6">
@@ -83,7 +91,7 @@ export default async function AdminEvents({
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        {events.map((e: any) => (
+        {events.map((e) => (
           <div
             key={e.id}
             className="flex items-center justify-between border-b border-white/10 px-4 py-4 last:border-b-0"

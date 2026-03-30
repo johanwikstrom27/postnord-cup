@@ -12,7 +12,7 @@ type Rules = {
   hcp_two_max: number | null;
   hcp_four_min: number | null;
 
-  final_start_scores: any | null; // jsonb
+  final_start_scores: number[] | null; // jsonb
 };
 
 type EventRow = {
@@ -31,7 +31,16 @@ type ResultForTotalsRow = {
   season_player_id: string;
   poang: number | null;
   did_not_play: boolean;
-  events: { event_type: string; locked: boolean } | null;
+  events: EventInfoRow | null;
+};
+
+type EventInfoRow = { event_type: string; locked: boolean };
+
+type ResultForTotalsRespRow = {
+  season_player_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+  events: EventInfoRow | EventInfoRow[] | null;
 };
 
 type Entry = {
@@ -54,12 +63,54 @@ type TeamRankRow = {
   poang: number;
 };
 
+type RawEntryInput = {
+  season_player_id?: unknown;
+  gross_strokes?: unknown;
+  did_not_play?: unknown;
+  override_placing?: unknown;
+  placering_override?: unknown;
+  placing_override?: unknown;
+  lag_nr?: unknown;
+  lag_score?: unknown;
+};
+
+type ParsedInput = {
+  entries?: unknown;
+  lock?: unknown;
+  unlock?: unknown;
+};
+
+type PointsRow = { placering: number | null; poang: number | null };
+
+type SeasonPlayerIdRow = { id: string };
+
+type ResultUpsertRow = {
+  event_id: string;
+  season_player_id: string;
+  gross_strokes: number | null;
+  did_not_play: boolean;
+  override_placing: number | null;
+  placering_override: number | null;
+  hcp_strokes: number;
+  net_strokes: number | null;
+  adjusted_score: number | null;
+  placering: number | null;
+  poang: number;
+  disqualified: boolean;
+  lag_nr: number | null;
+  lag_score: number | null;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function safeInt(v: unknown): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
-function pickOverride(x: any): number | null {
+function pickOverride(x: RawEntryInput): number | null {
   // stöd flera nycklar från klienten
   const v = x?.override_placing ?? x?.placering_override ?? x?.placing_override ?? null;
   return v === "" || v == null ? null : safeInt(v);
@@ -74,8 +125,10 @@ async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: 
   const ct = req.headers.get("content-type") || "";
 
   if (ct.includes("application/json")) {
-    const body = await req.json();
-    const raw = (body?.entries ?? []) as any[];
+    const body = (await req.json()) as ParsedInput;
+    const raw = Array.isArray(body?.entries)
+      ? body.entries.filter((x): x is RawEntryInput => typeof x === "object" && x !== null)
+      : [];
 
     const entries: Entry[] = raw.map((x) => ({
       season_player_id: String(x.season_player_id),
@@ -93,14 +146,18 @@ async function parseInput(req: NextRequest): Promise<{ entries: Entry[]; lock?: 
   const form = await req.formData();
   const rawEntries = form.get("entries");
 
-  let parsed: any[] = [];
+  let parsed: unknown = [];
   try {
     parsed = rawEntries ? JSON.parse(String(rawEntries)) : [];
   } catch {
     parsed = [];
   }
 
-  const entries: Entry[] = (parsed ?? []).map((x: any) => ({
+  const parsedEntries = Array.isArray(parsed)
+    ? parsed.filter((x): x is RawEntryInput => typeof x === "object" && x !== null)
+    : [];
+
+  const entries: Entry[] = parsedEntries.map((x) => ({
     season_player_id: String(x.season_player_id),
     gross_strokes: x.gross_strokes === "" || x.gross_strokes == null ? null : safeInt(x.gross_strokes),
     did_not_play: Boolean(x.did_not_play),
@@ -163,7 +220,7 @@ async function getPointsMap(
   if (resp.error) throw new Error(resp.error.message);
 
   const map = new Map<number, number>();
-  for (const r of (resp.data ?? []) as any[]) {
+  for (const r of (resp.data ?? []) as PointsRow[]) {
     const pl = Number(r.placering);
     const pts = Number(r.poang);
     if (Number.isFinite(pl)) map.set(pl, Number.isFinite(pts) ? pts : 0);
@@ -242,7 +299,7 @@ async function rebuildFinalStartScores(
   const spResp = await sb.from("season_players").select("id").eq("season_id", seasonId);
   if (spResp.error) throw new Error(spResp.error.message);
 
-  const spIds: string[] = (spResp.data ?? []).map((x: any) => String(x.id));
+  const spIds: string[] = ((spResp.data ?? []) as SeasonPlayerIdRow[]).map((x) => String(x.id));
 
   const resResp = await sb
     .from("results")
@@ -254,7 +311,12 @@ async function rebuildFinalStartScores(
   const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
   for (const id of spIds) bySp.set(id, { vanlig: [], major: [], lag: [] });
 
-  for (const r of (resResp.data ?? []) as any as ResultForTotalsRow[]) {
+  const totalRows = ((resResp.data ?? []) as ResultForTotalsRespRow[]).map((row) => ({
+    ...row,
+    events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+  })) as ResultForTotalsRow[];
+
+  for (const r of totalRows) {
     if (r?.events?.locked !== true) continue;
     if (r.did_not_play) continue;
     const et = String(r?.events?.event_type ?? "");
@@ -346,7 +408,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   const spResp = await sb.from("season_players").select("id,hcp").eq("season_id", seasonId);
   if (spResp.error) return NextResponse.json({ error: spResp.error.message }, { status: 500 });
 
-  const spRows = (spResp.data ?? []) as any[] as SeasonPlayerRow[];
+  const spRows = (spResp.data ?? []) as SeasonPlayerRow[];
   const hcpBySp = new Map<string, number>();
   for (const r of spRows) hcpBySp.set(String(r.id), Number(r.hcp ?? 0));
 
@@ -355,13 +417,13 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
   if (isFinal) {
     try {
       startScoreMap = await rebuildFinalStartScores(sb, eventId, seasonId, rules);
-    } catch (e: any) {
-      return NextResponse.json({ error: `Final startscore error: ${e?.message ?? e}` }, { status: 500 });
+    } catch (error: unknown) {
+      return NextResponse.json({ error: `Final startscore error: ${getErrorMessage(error)}` }, { status: 500 });
     }
   }
 
   // Build rows
-  const rows = entries.map((e) => {
+  const rows: ResultUpsertRow[] = entries.map((e) => {
     const hcp = Number(hcpBySp.get(e.season_player_id) ?? 0);
     const hcp_strokes = hcpToStrokes(hcp, rules);
 
@@ -404,7 +466,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
       );
 
     // Finalen avgörs på adjusted score (+ särspel), aldrig på poängtabell.
-    assignPlacingsByScore(playable as any, (r: any) => Number(r.adjusted_score), () => 0);
+    assignPlacingsByScore(playable, (r) => Number(r.adjusted_score), () => 0);
   } else if (isTeam) {
     const byTeam = new Map<number, typeof rows>();
 
@@ -517,7 +579,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } | Pro
           (a.override_placing ?? 999) - (b.override_placing ?? 999)
       );
 
-    assignPlacingsByScore(playable as any, (r: any) => Number(r.net_strokes), pointsFor);
+    assignPlacingsByScore(playable, (r) => Number(r.net_strokes), pointsFor);
   }
 
   // Persist results

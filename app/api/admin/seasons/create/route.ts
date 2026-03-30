@@ -4,6 +4,12 @@ import { supabaseServer } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
+type CopyableRow = Record<string, unknown> & {
+  id?: string;
+  season_id?: string;
+  created_at?: string;
+};
+
 async function isAdmin() {
   const cookieName = process.env.ADMIN_COOKIE_NAME || "pn_admin";
   const c = await cookies();
@@ -53,6 +59,7 @@ export async function POST(req: Request) {
       const latest = await sb
         .from("seasons")
         .select("id")
+        .neq("id", newSeasonId)
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
@@ -68,8 +75,13 @@ export async function POST(req: Request) {
         .single();
 
       if (sr.data) {
-        const { season_id, id, created_at, ...rest } = sr.data as any;
-        await sb.from("season_rules").insert({ season_id: newSeasonId, ...rest });
+        const ruleCopy = { ...(sr.data as CopyableRow), season_id: newSeasonId };
+        delete ruleCopy.id;
+        delete ruleCopy.created_at;
+        const insRules = await sb.from("season_rules").insert(ruleCopy);
+        if (insRules.error) {
+          return NextResponse.json({ error: insRules.error.message }, { status: 500 });
+        }
       }
 
       // Kopiera points_table
@@ -78,14 +90,23 @@ export async function POST(req: Request) {
         .select("*")
         .eq("season_id", sourceSeasonId)
         .order("event_type", { ascending: true })
-        .order("placing", { ascending: true });
+        .order("placering", { ascending: true });
+
+      if (pt.error) {
+        return NextResponse.json({ error: pt.error.message }, { status: 500 });
+      }
 
       if (pt.data?.length) {
-        const rows = (pt.data as any[]).map((r) => {
-          const { season_id, id, created_at, ...rest } = r;
-          return { season_id: newSeasonId, ...rest };
+        const rows = (pt.data as CopyableRow[]).map((r) => {
+          const copy = { ...r, season_id: newSeasonId };
+          delete copy.id;
+          delete copy.created_at;
+          return copy;
         });
-        await sb.from("points_table").insert(rows);
+        const insPoints = await sb.from("points_table").insert(rows);
+        if (insPoints.error) {
+          return NextResponse.json({ error: insPoints.error.message }, { status: 500 });
+        }
       }
     }
   }

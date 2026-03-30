@@ -30,7 +30,27 @@ type SPRow = {
   people: PersonRow | null;
 };
 
-type ResRow = { season_player_id: string; event_id: string; poang: number | null; did_not_play: boolean; events: { event_type: string; locked: boolean } | null };
+type SPJoinRespRow = {
+  id: string;
+  person_id: string;
+  people: PersonRow | PersonRow[] | null;
+};
+
+type EventInfoRow = { event_type: string; locked: boolean };
+
+type ResRow = {
+  season_player_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+  events: EventInfoRow | null;
+};
+
+type ResRespRow = {
+  season_player_id: string;
+  poang: number | null;
+  did_not_play: boolean;
+  events: EventInfoRow | EventInfoRow[] | null;
+};
 
 function sumTopN(values: number[], n: number) {
   return values
@@ -109,7 +129,10 @@ async function getSeriesLeader(sb: ReturnType<typeof supabaseServer>, seasonId: 
     .select("id,person_id,people(name,avatar_url)")
     .eq("season_id", seasonId);
 
-  const sps = (spResp.data ?? []) as any[] as SPRow[];
+  const sps = ((spResp.data ?? []) as SPJoinRespRow[]).map((row) => ({
+    ...row,
+    people: Array.isArray(row.people) ? row.people[0] ?? null : row.people ?? null,
+  })) as SPRow[];
   if (!sps.length) return null;
 
   const spIds = sps.map((x) => x.id);
@@ -120,7 +143,10 @@ async function getSeriesLeader(sb: ReturnType<typeof supabaseServer>, seasonId: 
     .select("season_player_id,poang,did_not_play,events(event_type,locked)")
     .in("season_player_id", spIds);
 
-  const rows = (resResp.data ?? []) as any[] as ResRow[];
+  const rows = ((resResp.data ?? []) as ResRespRow[]).map((row) => ({
+    ...row,
+    events: Array.isArray(row.events) ? row.events[0] ?? null : row.events ?? null,
+  })) as ResRow[];
 
   const bySp = new Map<string, { vanlig: number[]; major: number[]; lag: number[] }>();
   for (const p of sps) bySp.set(p.id, { vanlig: [], major: [], lag: [] });

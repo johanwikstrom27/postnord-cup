@@ -59,6 +59,9 @@ type ResRow = {
   event_id: string;
   poang: number | null;
   placering: number | null;
+  gross_strokes: number | null;
+  net_strokes: number | null;
+  adjusted_score: number | null;
   did_not_play: boolean;
 };
 
@@ -124,6 +127,7 @@ type FinalStandingRow = SummaryPerson & {
   total: number;
   baseRank: number;
   finalPlace: number | null;
+  finalNetScore: number | null;
   didNotPlay: boolean;
   displayRank: number;
   movement: number;
@@ -297,7 +301,7 @@ function PlayedBreakdown({ row }: { row: LeaderboardRow }) {
 function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: boolean }) {
   if (didNotPlay) {
     return (
-      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60">
+      <span className="inline-flex h-7 min-w-[34px] items-center justify-center rounded-full border border-white/10 bg-white/5 px-2 text-[10px] font-semibold text-white/60">
         DNS
       </span>
     );
@@ -305,23 +309,29 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
 
   if (movement > 0) {
     return (
-      <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
-        ↑ {movement}
+      <span
+        className="inline-flex h-7 w-7 items-center justify-center border border-emerald-300/25 bg-emerald-400/12 text-[10px] font-bold text-emerald-200"
+        style={{ clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)" }}
+      >
+        <span className="translate-y-[2px]">{movement}</span>
       </span>
     );
   }
 
   if (movement < 0) {
     return (
-      <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-200">
-        ↓ {Math.abs(movement)}
+      <span
+        className="inline-flex h-7 w-7 items-center justify-center border border-red-300/25 bg-red-400/12 text-[10px] font-bold text-red-200"
+        style={{ clipPath: "polygon(0% 0%, 100% 0%, 50% 100%)" }}
+      >
+        <span className="-translate-y-[2px]">{Math.abs(movement)}</span>
       </span>
     );
   }
 
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/60">
-      = 0
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[10px] font-semibold text-white/60">
+      0
     </span>
   );
 }
@@ -329,7 +339,7 @@ function MovementPill({ movement, didNotPlay }: { movement: number; didNotPlay: 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) {
     return (
-      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-amber-300/45 bg-amber-300/12 text-sm font-semibold text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-300/45 bg-amber-300/12 text-[12px] font-semibold text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.12)]">
         1
       </div>
     );
@@ -337,7 +347,7 @@ function RankBadge({ rank }: { rank: number }) {
 
   if (rank === 2) {
     return (
-      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/35 bg-slate-200/10 text-sm font-semibold text-slate-100 shadow-[0_0_0_1px_rgba(226,232,240,0.08)]">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/35 bg-slate-200/10 text-[12px] font-semibold text-slate-100 shadow-[0_0_0_1px_rgba(226,232,240,0.08)]">
         2
       </div>
     );
@@ -345,13 +355,13 @@ function RankBadge({ rank }: { rank: number }) {
 
   if (rank === 3) {
     return (
-      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-orange-300/35 bg-orange-300/10 text-sm font-semibold text-orange-100 shadow-[0_0_0_1px_rgba(253,186,116,0.08)]">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-orange-300/35 bg-orange-300/10 text-[12px] font-semibold text-orange-100 shadow-[0_0_0_1px_rgba(253,186,116,0.08)]">
         3
       </div>
     );
   }
 
-  return <div className="w-8 text-white/60">{rank}</div>;
+  return <div className="flex h-7 w-7 items-center justify-center text-[13px] font-medium text-white/60">{rank}</div>;
 }
 
 function FinishedHighlightCard({
@@ -453,6 +463,13 @@ function podiumMetaForRow(row: TopRow, eventType: string) {
 
   const pts = Number(row.poang ?? 0);
   return pts > 0 ? `${strokes ?? "—"} slag • ${pts.toLocaleString("sv-SE")} p` : `${strokes ?? "—"} slag`;
+}
+
+function finalNetScore(row: Pick<ResRow, "net_strokes" | "adjusted_score" | "gross_strokes">) {
+  if (row.net_strokes != null) return row.net_strokes;
+  if (row.adjusted_score != null) return row.adjusted_score;
+  if (row.gross_strokes != null) return row.gross_strokes;
+  return null;
 }
 
 function podiumSymbol(placing: number) {
@@ -733,7 +750,7 @@ export default async function Page({
   if (lockedEventIds.length && spIds.length) {
     const resResp = await sb
       .from("results")
-      .select("season_player_id,event_id,poang,placering,did_not_play")
+      .select("season_player_id,event_id,poang,placering,gross_strokes,net_strokes,adjusted_score,did_not_play")
       .in("event_id", lockedEventIds)
       .in("season_player_id", spIds);
 
@@ -941,6 +958,7 @@ export default async function Page({
           total: seriesRow.total,
           baseRank: baseRankByPersonId.get(meta.person_id) ?? leaderboard.length,
           finalPlace: row.placering,
+          finalNetScore: finalNetScore(row),
           didNotPlay: row.did_not_play,
           displayRank: 0,
           movement: 0,
@@ -1196,27 +1214,38 @@ export default async function Page({
             ? finalStandings.map((row) => (
                 <div
                   key={row.person_id}
-                  className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 last:border-b-0"
+                  className="grid grid-cols-[28px_30px_minmax(0,1fr)_52px_68px_32px] items-center gap-2 border-b border-white/10 px-3 py-2.5 last:border-b-0 sm:grid-cols-[32px_34px_minmax(0,1fr)_62px_82px_36px] sm:gap-3 sm:px-4"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex justify-center">
                     <RankBadge rank={row.displayRank} />
-                    <AvatarRound url={row.avatar_url} name={row.name} size={34} />
-                    <div className="min-w-0">
-                      <Link href={`/players/${row.person_id}${seasonQuery}`} className="font-medium hover:underline truncate">
+                  </div>
+                  <AvatarRound url={row.avatar_url} name={row.name} size={30} />
+                  <div className="min-w-0">
+                    <Link
+                      href={`/players/${row.person_id}${seasonQuery}`}
+                      className="block truncate text-[15px] font-medium leading-tight hover:underline sm:text-base"
+                    >
                         {row.name}
-                      </Link>
-                      <div className="text-xs text-white/50">
-                        Grundserie #{row.baseRank}
-                        {row.didNotPlay ? " • DNS i finalen" : ""}
-                      </div>
+                    </Link>
+                    <div className="truncate text-[11px] text-white/50 sm:text-xs">
+                      Grundserie #{row.baseRank}
+                      {row.didNotPlay ? " • DNS i finalen" : ""}
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-xs text-white/50">Poäng</div>
-                      <div className="font-semibold">{row.total.toLocaleString("sv-SE")}</div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Netto</div>
+                    <div className="text-sm font-semibold leading-tight sm:text-base">
+                      {row.didNotPlay ? "DNS" : row.finalNetScore ?? "—"}
                     </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Poäng</div>
+                    <div className="text-sm font-semibold leading-tight sm:text-base">
+                      {row.total.toLocaleString("sv-SE")}
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
                     <MovementPill movement={row.movement} didNotPlay={row.didNotPlay} />
                   </div>
                 </div>

@@ -508,7 +508,7 @@ export default async function PlayerPage({
           : finalResult.did_not_play
           ? "DNS"
           : typeof finalResult.placering === "number"
-          ? `#${finalResult.placering}`
+          ? `Placering ${finalResult.placering}`
           : "Ej final";
 
         const baseRank = seriesRankById.get(subjectSeasonPlayerIds[0] ?? "") ?? null;
@@ -519,7 +519,7 @@ export default async function PlayerPage({
           seasonYear: seasonYear(seasonMeta.name),
           finalPlaceLabel,
           finalPlaceTone: finalPlaceTone(finalPlaceLabel),
-          baseRankLabel: baseRank ? `#${baseRank}` : "—",
+          baseRankLabel: baseRank ? `Placering ${baseRank}` : "—",
           trophies: wins,
           podiums,
           participationLabel: `${playedCount}/${totalLockedEvents || 0} tävlingar`,
@@ -770,21 +770,19 @@ export default async function PlayerPage({
                 key={seasonCard.seasonId}
                 className="border-b border-white/10 px-4 py-3.5 last:border-b-0 sm:px-5"
               >
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold text-white sm:text-base">
                       {seasonCard.seasonName}
                     </div>
                   </div>
-
-                  <div
-                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold sm:text-xs ${seasonCard.finalPlaceTone}`}
-                  >
-                    Final {seasonCard.finalPlaceLabel}
-                  </div>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div className={`rounded-xl border px-3 py-2 ${seasonCard.finalPlaceTone}`}>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-current/70">Final</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{seasonCard.finalPlaceLabel}</div>
+                  </div>
                   <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Grundserie</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.baseRankLabel}</div>

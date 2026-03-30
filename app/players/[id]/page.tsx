@@ -768,31 +768,31 @@ export default async function PlayerPage({
                 </div>
 
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Final</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.finalPlaceLabel}</div>
                   </div>
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Grundserie</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.baseRankLabel}</div>
                   </div>
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Deltagit</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.participationLabel}</div>
                   </div>
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Pokaler</div>
                     <div className="mt-1 text-sm font-semibold text-white">
                       {seasonCard.trophies.toLocaleString("sv-SE")}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Pallplatser</div>
                     <div className="mt-1 text-sm font-semibold text-white">
                       {seasonCard.podiums.toLocaleString("sv-SE")}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-2">
+                  <div className="rounded-xl border border-white/[0.04] bg-white/[0.03] px-3 py-2">
                     <div className="text-[10px] uppercase tracking-[0.16em] text-white/45">Snittplacering</div>
                     <div className="mt-1 text-sm font-semibold text-white">{seasonCard.averagePlaceLabel}</div>
                   </div>

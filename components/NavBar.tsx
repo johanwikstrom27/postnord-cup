@@ -144,7 +144,7 @@ export default function NavBar() {
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           {/* Brand */}
           <Link href={hrefFor("/")} className="flex min-w-0 flex-1 items-center gap-3 pr-2">
-            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-visible sm:h-20 sm:w-20">
+            <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-visible sm:h-[68px] sm:w-[68px]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/icons/pncuplogga-v4.png"

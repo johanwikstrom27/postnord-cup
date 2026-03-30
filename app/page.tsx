@@ -1234,7 +1234,7 @@ export default async function Page({
             ? finalStandings.map((row) => (
                 <div
                   key={row.person_id}
-                  className="grid grid-cols-[30px_32px_minmax(0,1fr)_60px_78px_36px] items-center gap-3 border-b border-white/10 px-3 py-2.5 last:border-b-0 sm:grid-cols-[32px_34px_minmax(0,1fr)_66px_92px_40px] sm:gap-4 sm:px-4"
+                  className="grid grid-cols-[30px_32px_minmax(0,1fr)_156px] items-center gap-2.5 border-b border-white/10 px-3 py-2.5 last:border-b-0 sm:grid-cols-[32px_34px_minmax(0,1fr)_196px] sm:gap-3.5 sm:px-4"
                 >
                   <div className="flex justify-center">
                     <RankBadge rank={row.displayRank} />
@@ -1243,30 +1243,32 @@ export default async function Page({
                   <div className="min-w-0">
                     <Link
                       href={`/players/${row.person_id}${seasonQuery}`}
-                      className="block truncate text-[14px] font-medium leading-tight hover:underline sm:text-[15px]"
+                      className="block text-[14px] font-medium leading-tight hover:underline sm:text-[15px]"
                     >
                       {shortPlayerName(row.name)}
                     </Link>
-                    <div className="truncate text-[11px] text-white/50 sm:text-xs">
+                    <div className="text-[11px] leading-tight text-white/50 sm:text-xs">
                       Grundserie #{row.baseRank}
                       {row.didNotPlay ? " • DNS i finalen" : ""}
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Netto</div>
-                    <div className="text-sm font-semibold leading-tight sm:text-base">
-                      {row.didNotPlay ? "DNS" : row.finalNetScore ?? "—"}
+                  <div className="grid grid-cols-[48px_64px_32px] items-center justify-items-end gap-3 sm:grid-cols-[58px_82px_36px] sm:gap-4">
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Netto</div>
+                      <div className="text-sm font-semibold leading-tight sm:text-base">
+                        {row.didNotPlay ? "DNS" : row.finalNetScore ?? "—"}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Poäng</div>
-                    <div className="text-sm font-semibold leading-tight sm:text-base">
-                      {row.total.toLocaleString("sv-SE")}
+                    <div className="text-right">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-white/45 sm:text-[11px]">Poäng</div>
+                      <div className="text-sm font-semibold leading-tight sm:text-base">
+                        {row.total.toLocaleString("sv-SE")}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex justify-end">
-                    <MovementPill movement={row.movement} didNotPlay={row.didNotPlay} />
+                    <div className="flex justify-end">
+                      <MovementPill movement={row.movement} didNotPlay={row.didNotPlay} />
+                    </div>
                   </div>
                 </div>
               ))

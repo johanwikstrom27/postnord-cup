@@ -70,14 +70,27 @@ function buttonClass(tone: "default" | "primary" | "danger" | "success" = "defau
 }
 
 const TEAM_ICONS = ["◆", "●", "▲", "■", "✦", "✚", "⬟", "★", "◇", "⬢", "✹", "✶"];
-const TEAM_COLORS = ["#2dd4bf", "#60a5fa", "#f59e0b", "#f472b6", "#a3e635", "#c084fc", "#fb7185", "#34d399"];
+const TEAM_COLORS = [
+  "#2dd4bf",
+  "#60a5fa",
+  "#f59e0b",
+  "#f472b6",
+  "#a3e635",
+  "#c084fc",
+  "#fb7185",
+  "#34d399",
+  "#facc15",
+  "#38bdf8",
+  "#fb923c",
+  "#a78bfa",
+];
 
-function randomTeamIcon(index: number) {
-  return TEAM_ICONS[(index + Math.floor(Math.random() * TEAM_ICONS.length)) % TEAM_ICONS.length];
+function teamIconForIndex(index: number) {
+  return TEAM_ICONS[index % TEAM_ICONS.length];
 }
 
-function randomTeamColor(index: number) {
-  return TEAM_COLORS[(index + Math.floor(Math.random() * TEAM_COLORS.length)) % TEAM_COLORS.length];
+function teamColorForIndex(index: number) {
+  return TEAM_COLORS[index % TEAM_COLORS.length];
 }
 
 function teamTargetSize(team: OtherCompetitionTeam) {
@@ -307,8 +320,8 @@ export default function OtherCompetitionAdminEditor({
         {
           id: crypto.randomUUID(),
           name: "",
-          color: randomTeamColor(prev.teams.length),
-          icon: randomTeamIcon(prev.teams.length),
+          color: teamColorForIndex(prev.teams.length),
+          icon: teamIconForIndex(prev.teams.length),
           targetSize: Math.max(1, Number(prev.settings.teamSize ?? 2)),
           memberIds: [],
           sortOrder: prev.teams.length,
@@ -323,23 +336,30 @@ export default function OtherCompetitionAdminEditor({
     const plannedPlayers = Math.max(1, Number(config.settings.plannedPlayerCount ?? config.players.length ?? 12));
     const plannedTeams = Math.max(1, Number(config.settings.plannedTeamCount ?? 1));
     const teamSize = Math.max(1, Math.ceil(plannedPlayers / plannedTeams));
-    const players = sortedPlayers(config.players);
     const teams: OtherCompetitionTeam[] = [];
 
     for (let index = 0; index < plannedTeams; index += 1) {
-      const firstPlayerIndex = index * teamSize;
       teams.push({
         id: crypto.randomUUID(),
         name: "",
-        color: randomTeamColor(index),
-        icon: randomTeamIcon(index),
+        color: teamColorForIndex(index),
+        icon: teamIconForIndex(index),
         targetSize: teamSize,
-        memberIds: players.slice(firstPlayerIndex, firstPlayerIndex + teamSize).map((player) => player.id),
+        memberIds: [],
         sortOrder: teams.length,
       });
     }
 
     patchConfig((prev) => ({ ...prev, teams, settings: { ...prev.settings, teamSize, isTeamCompetition: true } }));
+  }
+
+  function clearTeams() {
+    if (locked) return;
+    patchConfig((prev) => ({
+      ...prev,
+      teams: [],
+      finalPlacementOverrides: {},
+    }));
   }
 
   function patchTeam(teamId: string, patch: Partial<OtherCompetitionTeam>) {
@@ -682,7 +702,7 @@ export default function OtherCompetitionAdminEditor({
       {tab === "teams" ? (
         <section className="space-y-4">
           <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="grid gap-3 md:grid-cols-[160px_160px_auto_auto_minmax(0,1fr)]">
+            <div className="grid gap-3 md:grid-cols-[160px_160px_auto_auto_auto_minmax(0,1fr)]">
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.18em] text-white/45">Antal spelare</span>
                 <input
@@ -711,6 +731,9 @@ export default function OtherCompetitionAdminEditor({
               <button type="button" disabled={locked} onClick={addTeam} className={buttonClass()}>
                 Tomt lag
               </button>
+              <button type="button" disabled={locked || config.teams.length === 0} onClick={clearTeams} className={buttonClass("danger")}>
+                Rensa alla lag
+              </button>
               <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4">
                 <input
                   disabled={locked}
@@ -722,14 +745,14 @@ export default function OtherCompetitionAdminEditor({
               </label>
             </div>
             <div className="mt-3 text-sm text-white/55">
-              Exempel: 12 spelare och 6 lag skapar 6 lag med 2 platser i varje. Finns spelarna redan importerade fylls platserna automatiskt.
+              Exempel: 12 spelare och 6 lag skapar 6 tomma lag med 2 platser i varje. Spelarna ligger kvar i poolen tills du väljer in dem i ett lag.
             </div>
           </div>
 
           <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold">Spelare utan lag</h2>
+                <h2 className="text-xl font-semibold">Spelarpool</h2>
                 <div className="mt-1 text-sm text-white/55">Välj ett lag i listan för att flytta in spelaren direkt.</div>
               </div>
               <div className="text-sm text-white/50">
@@ -759,7 +782,7 @@ export default function OtherCompetitionAdminEditor({
                 ))}
               {sortedPlayers(config.players).filter((player) => !playerTeamId(player.id)).length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-center text-sm text-white/52 md:col-span-2">
-                  Alla spelare ligger i lag.
+                  Alla importerade spelare ligger i lag. Flytta en spelare till “Utan lag” för att få tillbaka den här.
                 </div>
               ) : null}
             </div>

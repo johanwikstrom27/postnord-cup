@@ -11,13 +11,12 @@ import {
   totalStandings,
 } from "@/lib/otherCompetitions/scoring";
 
-const TABS = ["overview", "standings", "rounds", "schedule", "players", "rules"] as const;
+const TABS = ["overview", "standings", "schedule", "players", "rules"] as const;
 type Tab = (typeof TABS)[number];
 
 function tabLabel(tab: Tab) {
   if (tab === "overview") return "Översikt";
   if (tab === "standings") return "Tabell";
-  if (tab === "rounds") return "Rundor";
   if (tab === "schedule") return "Spelschema";
   if (tab === "players") return "Lag/Spelare";
   return "Stadgar";
@@ -150,9 +149,9 @@ export default function OtherCompetitionPublicClient({
             </div>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Rundor</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Speldagar</div>
             <div className="mt-3 text-2xl font-semibold">{rounds.length}</div>
-            <div className="mt-1 text-sm text-white/58">Valfritt format per runda</div>
+            <div className="mt-1 text-sm text-white/58">Valfritt format per speldag</div>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
             <div className="text-xs uppercase tracking-[0.22em] text-white/45">Deltagare</div>
@@ -210,9 +209,10 @@ export default function OtherCompetitionPublicClient({
         </section>
       ) : null}
 
-      {tab === "rounds" ? (
+      {tab === "schedule" ? (
         <section className="grid gap-4">
           {rounds.map((round) => {
+            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item.name]));
             const rows = roundLeaderboard(competition.config, round);
             return (
               <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
@@ -226,31 +226,8 @@ export default function OtherCompetitionPublicClient({
                   </div>
                   {round.date ? <div className="text-sm text-white/58">{round.date}</div> : null}
                 </div>
-                <div className="mt-4 grid gap-2">
-                  {rows.slice(0, 6).map((row) => (
-                    <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                      <div className="min-w-0">
-                        <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
-                        <span className="font-medium">{row.competitor.name}</span>
-                      </div>
-                      <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      ) : null}
 
-      {tab === "schedule" ? (
-        <section className="grid gap-4">
-          {rounds.map((round) => {
-            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item.name]));
-            return (
-              <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                <h2 className="text-xl font-semibold">{round.name}</h2>
-                <div className="mt-3 grid gap-2">
+                <div className="mt-4 grid gap-2">
                   {round.schedule.map((item) => (
                     <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                       <div className="flex items-start justify-between gap-3">
@@ -271,6 +248,23 @@ export default function OtherCompetitionPublicClient({
                     </div>
                   ) : null}
                 </div>
+
+                {rows.some((row) => row.points !== 0 || row.result?.scoreLabel) ? (
+                  <div className="mt-4 border-t border-white/10 pt-4">
+                    <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Ställning i denna speldag</div>
+                    <div className="grid gap-2">
+                      {rows.slice(0, 6).map((row) => (
+                        <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                          <div className="min-w-0">
+                            <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
+                            <span className="font-medium">{row.competitor.name}</span>
+                          </div>
+                          <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

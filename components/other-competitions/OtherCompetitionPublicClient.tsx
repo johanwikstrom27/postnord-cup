@@ -81,6 +81,16 @@ function formatRoundDate(value: string) {
   return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function hasCompetitionStarted(competition: OtherCompetitionRow) {
+  if (competition.status === "live" || competition.status === "locked") return true;
+  if (!competition.starts_on) return false;
+  const start = new Date(`${competition.starts_on}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today >= start;
+}
+
 function earliestStartTime(round: OtherCompetitionRound) {
   const times = round.schedule
     .map((item) => item.time.trim())
@@ -301,8 +311,18 @@ export default function OtherCompetitionPublicClient({
   const standings = useMemo(() => totalStandings(competition.config), [competition.config]);
   const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
   const showCountdown = nextCountdown != null && nextCountdown > 0;
+  const competitionStarted = hasCompetitionStarted(competition);
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const groupedRounds = dayGroups(rounds);
+  const hasResultData = Object.values(competition.config.results).some((results) =>
+    results.some(
+      (result) =>
+        result.points !== 0 ||
+        result.rawScore != null ||
+        Boolean(result.scoreLabel) ||
+        Object.values(result.playerScores ?? {}).some((value) => typeof value === "number")
+    )
+  );
 
   return (
     <main className="space-y-5">
@@ -364,9 +384,15 @@ export default function OtherCompetitionPublicClient({
         <section className="grid gap-4 md:grid-cols-3">
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
             <div className="text-xs uppercase tracking-[0.22em] text-white/45">Ledare</div>
-            <div className="mt-3 text-2xl font-semibold">{standings[0]?.competitor.name ?? "Ingen tabell ännu"}</div>
+            <div className="mt-3 text-2xl font-semibold">
+              {competitionStarted && hasResultData ? standings[0]?.competitor.name ?? "Ingen tabell ännu" : "Inte startad"}
+            </div>
             <div className="mt-1 text-sm text-white/58">
-              {standings[0] ? `${fmtPoints(standings[0].total)} poäng` : "Fylls när resultat matas in"}
+              {competitionStarted && hasResultData && standings[0]
+                ? `${fmtPoints(standings[0].total)} poäng`
+                : competitionStarted
+                  ? "Fylls när första resultatet sparas"
+                  : "Visas när tävlingen är igång"}
             </div>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
@@ -404,7 +430,6 @@ export default function OtherCompetitionPublicClient({
                 <div className="flex items-center justify-between gap-3 md:block">
                   <div className="font-semibold tabular-nums text-white/86">
                     {row.placement ?? "-"}
-                    {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
                   </div>
                   <div className="text-right text-2xl font-semibold tabular-nums md:hidden">{fmtPoints(row.total)}</div>
                 </div>
@@ -453,7 +478,6 @@ export default function OtherCompetitionPublicClient({
                 </div>
                 <div className="hidden">
                   {row.placement ?? "-"}
-                  {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
                 </div>
               </div>
             ))}

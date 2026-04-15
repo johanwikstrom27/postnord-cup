@@ -117,6 +117,8 @@ function normalizeRound(value: unknown, index: number): OtherCompetitionRound {
     scoringModel: normalizeScoringModel(input.scoringModel),
     parts: [],
     schedule: Array.isArray(input.schedule) ? input.schedule.map(normalizeScheduleItem) : [],
+    locked: Boolean(input.locked),
+    lockedAt: typeof input.lockedAt === "string" ? input.lockedAt : null,
     sortOrder: Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : index,
   };
 

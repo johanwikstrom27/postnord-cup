@@ -23,7 +23,6 @@ import {
   scoringModelForUnit,
   scoringUnitsForRound,
   teamDisplayName,
-  totalStandings,
 } from "@/lib/otherCompetitions/scoring";
 
 type Tab = "basic" | "players" | "teams" | "schedule" | "results" | "rules";
@@ -390,7 +389,9 @@ export default function OtherCompetitionAdminEditor({
   const selectedScoringUnit =
     scoringUnits.find((unit) => unit.resultKey === selectedResultKey) ??
     (selectedRound ? scoringUnitsForRound(selectedRound)[0] : null);
-  const standings = useMemo(() => totalStandings(config), [config]);
+  function isRoundLocked(round: OtherCompetitionRound) {
+    return locked || Boolean(round.locked);
+  }
 
   function markDirty() {
     dirtyRef.current = true;
@@ -700,7 +701,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function splitRoundIntoNines(round: OtherCompetitionRound) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     const parts = [
       {
         id: crypto.randomUUID(),
@@ -727,7 +728,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function addRoundPart(round: OtherCompetitionRound) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     const part = {
       id: crypto.randomUUID(),
       name: `Del ${(round.parts ?? []).length + 1}`,
@@ -748,7 +749,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function removeRoundPart(round: OtherCompetitionRound, partId: string) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     patchConfig((prev) => {
       const nextResults = { ...prev.results };
       delete nextResults[`${round.id}:${partId}`];
@@ -787,8 +788,20 @@ export default function OtherCompetitionAdminEditor({
     if (scoringModelForUnit(unit).kind !== "placement") return results;
 
     const competitors = new Map(competitorsForRound(config, unit.round).map((competitor) => [competitor.id, competitor]));
+    const scoredRows = results
+      .map((result) => ({ result, score: rankingScore(result) }))
+      .filter((row): row is { result: OtherCompetitionResult; score: number } => row.score !== null);
+    const topScore = scoredRows.length > 1 ? Math.max(...scoredRows.map((row) => row.score)) : null;
+    const playoffIds =
+      topScore == null
+        ? new Set<string>()
+        : new Set(scoredRows.filter((row) => row.score === topScore).map((row) => row.result.competitorId));
+    const cleanedResults =
+      playoffIds.size > 1
+        ? results.map((result) => (playoffIds.has(result.competitorId) ? result : { ...result, winnerOverride: false }))
+        : results.map((result) => ({ ...result, winnerOverride: false }));
     const ranked = rankEntries(
-      results
+      cleanedResults
         .map((result) => ({ result, score: rankingScore(result) }))
         .filter((row): row is { result: OtherCompetitionResult; score: number } => row.score !== null)
         .map(({ result, score }) => ({
@@ -810,7 +823,7 @@ export default function OtherCompetitionAdminEditor({
     const distribution = scoringModelForUnit(unit).placementPoints;
     const byId = new Map(ranked.map((row) => [row.competitor.id, distribution[(row.placement ?? 0) - 1] ?? 0]));
 
-    return results.map((result) => ({
+    return cleanedResults.map((result) => ({
       ...result,
       points: byId.get(result.competitorId) ?? 0,
       adjustment: 0,
@@ -819,6 +832,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function patchUnitResult(unit: NonNullable<typeof selectedScoringUnit>, competitorId: string, patch: Partial<OtherCompetitionResult>) {
+    if (isRoundLocked(unit.round)) return;
     const results = ensureUnitResults(unit).map((result) =>
       result.competitorId === competitorId ? { ...result, ...patch } : result
     );
@@ -826,6 +840,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function patchPlayerScore(unit: NonNullable<typeof selectedScoringUnit>, teamId: string, playerId: string, value: string) {
+    if (isRoundLocked(unit.round)) return;
     const numericValue = value === "" ? null : Number(value);
     const members = teamMembers(teamId);
     const results = ensureUnitResults(unit).map((result) => {
@@ -852,7 +867,28 @@ export default function OtherCompetitionAdminEditor({
     patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
   }
 
+  function firstPlaceTieIds(unit: NonNullable<typeof selectedScoringUnit>, results: OtherCompetitionResult[]) {
+    const scored = results
+      .map((result) => ({ id: result.competitorId, score: rankingScore(result) }))
+      .filter((row): row is { id: string; score: number } => row.score !== null);
+    if (scored.length < 2) return new Set<string>();
+    const topScore = Math.max(...scored.map((row) => row.score));
+    const tied = scored.filter((row) => row.score === topScore).map((row) => row.id);
+    return new Set(tied.length > 1 && scoringModelForUnit(unit).kind === "placement" ? tied : []);
+  }
+
+  function setPlayoffWinner(unit: NonNullable<typeof selectedScoringUnit>, competitorId: string, checked: boolean) {
+    if (isRoundLocked(unit.round)) return;
+    const results = ensureUnitResults(unit).map((result) => ({
+      ...result,
+      winnerOverride: checked ? result.competitorId === competitorId : false,
+      placementOverride: null,
+    }));
+    patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
+  }
+
   function addScheduleItem(round: OtherCompetitionRound) {
+    if (isRoundLocked(round)) return;
     const itemLabel = isMatchRound(round) ? "Match" : "Boll";
     const item: OtherCompetitionScheduleItem = {
       id: crypto.randomUUID(),
@@ -930,7 +966,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function generateSchedule(round: OtherCompetitionRound) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     const competitors = scheduleCompetitorsForRound(round);
     const defaultPerBall = usesTeamPoolForMatchRound(round, config.teams.length) ? 2 : 4;
     const ballsCount = round.ballsCount > 0 ? round.ballsCount : Math.ceil(competitors.length / defaultPerBall);
@@ -1005,7 +1041,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function moveCompetitorToScheduleItem(round: OtherCompetitionRound, itemId: string, competitorId: string) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     patchRound(round.id, {
       schedule: round.schedule.map((item) => {
         const withoutCompetitor = item.competitorIds.filter((id) => id !== competitorId);
@@ -1022,7 +1058,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function removeCompetitorFromScheduleItem(round: OtherCompetitionRound, itemId: string, competitorId: string) {
-    if (locked) return;
+    if (isRoundLocked(round)) return;
     patchRound(round.id, {
       schedule: round.schedule.map((item) =>
         item.id === itemId
@@ -1047,6 +1083,7 @@ export default function OtherCompetitionAdminEditor({
         : saveState === "saved"
           ? "text-emerald-100"
           : "text-white/58";
+  const selectedRoundLocked = selectedScoringUnit ? isRoundLocked(selectedScoringUnit.round) : locked;
 
   return (
     <main className="space-y-5">
@@ -1493,6 +1530,7 @@ export default function OtherCompetitionAdminEditor({
 
           {(selectedRound ? [selectedRound] : []).map((round) => {
             const competitors = scheduleCompetitorsForRound(round);
+            const roundLocked = isRoundLocked(round);
             const usesTeamPool = usesTeamPoolForMatchRound(round, config.teams.length);
             const poolLabel = usesTeamPool ? "Lagpool" : "Spelarpool";
             const pairingSegments: Array<OtherCompetitionSchedulePairing["segment"]> =
@@ -1507,26 +1545,41 @@ export default function OtherCompetitionAdminEditor({
                       {round.playMode === "team" ? "Lag" : "Individuellt"}
                     </div>
                   </div>
-                  <button type="button" disabled={locked} onClick={() => removeRound(round.id)} className={buttonClass("danger")}>
-                    Ta bort speldag
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      disabled={locked}
+                      onClick={() => patchRound(round.id, { locked: !round.locked, lockedAt: round.locked ? null : new Date().toISOString() })}
+                      className={round.locked ? buttonClass("danger") : buttonClass("success")}
+                    >
+                      {round.locked ? "Lås upp runda" : "Lås runda"}
+                    </button>
+                    <button type="button" disabled={roundLocked} onClick={() => removeRound(round.id)} className={buttonClass("danger")}>
+                      Ta bort speldag
+                    </button>
+                  </div>
                 </div>
+                {round.locked ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">
+                    Rundan är låst och skrivskyddad. Lås upp rundan för att ändra schema eller resultat.
+                  </div>
+                ) : null}
 
                 <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 p-4">
                   <div className="text-xs uppercase tracking-[0.22em] text-white/45">1. Format och grundinställningar</div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Namn</span>
-                      <input disabled={locked} value={round.name} onChange={(e) => patchRound(round.id, { name: e.target.value })} className={inputClass(locked)} />
+                      <input disabled={roundLocked} value={round.name} onChange={(e) => patchRound(round.id, { name: e.target.value })} className={inputClass(roundLocked)} />
                     </label>
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Datum</span>
-                      <input disabled={locked} type="date" value={round.date} onChange={(e) => patchRound(round.id, { date: e.target.value })} className={inputClass(locked)} />
+                      <input disabled={roundLocked} type="date" value={round.date} onChange={(e) => patchRound(round.id, { date: e.target.value })} className={inputClass(roundLocked)} />
                     </label>
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Tävlingsformat</span>
                       <select
-                        disabled={locked}
+                        disabled={roundLocked}
                         value={round.format}
                         onChange={(e) => {
                           const option = FORMAT_OPTIONS.find((item) => item.value === e.target.value);
@@ -1536,7 +1589,7 @@ export default function OtherCompetitionAdminEditor({
                             scoringModel: { ...round.scoringModel, kind: option?.scoringKind ?? round.scoringModel.kind },
                           });
                         }}
-                        className={inputClass(locked)}
+                        className={inputClass(roundLocked)}
                       >
                         {FORMAT_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -1547,15 +1600,15 @@ export default function OtherCompetitionAdminEditor({
                     </label>
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Eget formatnamn</span>
-                      <input disabled={locked || round.format !== "custom"} value={round.customFormatName} onChange={(e) => patchRound(round.id, { customFormatName: e.target.value })} placeholder="Endast för custom" className={inputClass(locked || round.format !== "custom")} />
+                      <input disabled={roundLocked || round.format !== "custom"} value={round.customFormatName} onChange={(e) => patchRound(round.id, { customFormatName: e.target.value })} placeholder="Endast för custom" className={inputClass(roundLocked || round.format !== "custom")} />
                     </label>
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Antal hål</span>
-                      <input disabled={locked} type="number" min={1} value={round.holes} onChange={(e) => patchRound(round.id, { holes: Number(e.target.value) || 18 })} className={inputClass(locked)} />
+                      <input disabled={roundLocked} type="number" min={1} value={round.holes} onChange={(e) => patchRound(round.id, { holes: Number(e.target.value) || 18 })} className={inputClass(roundLocked)} />
                     </label>
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Vem rankas i rundan?</span>
-                      <select disabled={locked} value={round.playMode} onChange={(e) => patchRound(round.id, { playMode: e.target.value as OtherCompetitionRound["playMode"] })} className={inputClass(locked)}>
+                      <select disabled={roundLocked} value={round.playMode} onChange={(e) => patchRound(round.id, { playMode: e.target.value as OtherCompetitionRound["playMode"] })} className={inputClass(roundLocked)}>
                         <option value="team">Lag - lagets resultat ger tabellpoäng</option>
                         <option value="individual">Spelare - individuella resultat ger tabellpoäng</option>
                       </select>
@@ -1575,10 +1628,10 @@ export default function OtherCompetitionAdminEditor({
                       </div>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <button type="button" disabled={locked} onClick={() => splitRoundIntoNines(round)} className={buttonClass("primary")}>
+                      <button type="button" disabled={roundLocked} onClick={() => splitRoundIntoNines(round)} className={buttonClass("primary")}>
                         Dela 18 i 2 x 9
                       </button>
-                      <button type="button" disabled={locked} onClick={() => addRoundPart(round)} className={buttonClass()}>
+                      <button type="button" disabled={roundLocked} onClick={() => addRoundPart(round)} className={buttonClass()}>
                         Lägg till del
                       </button>
                     </div>
@@ -1594,20 +1647,20 @@ export default function OtherCompetitionAdminEditor({
                         <div key={part.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_110px_auto]">
                             <input
-                              disabled={locked}
+                              disabled={roundLocked}
                               value={part.name}
                               onChange={(e) => patchRoundPart(round, part.id, { name: e.target.value })}
-                              className={inputClass(locked)}
+                              className={inputClass(roundLocked)}
                             />
                             <input
-                              disabled={locked}
+                              disabled={roundLocked}
                               type="number"
                               min={1}
                               value={part.holes}
                               onChange={(e) => patchRoundPart(round, part.id, { holes: Number(e.target.value) || 9 })}
-                              className={inputClass(locked)}
+                              className={inputClass(roundLocked)}
                             />
-                            <button type="button" disabled={locked} onClick={() => removeRoundPart(round, part.id)} className={buttonClass("danger")}>
+                            <button type="button" disabled={roundLocked} onClick={() => removeRoundPart(round, part.id)} className={buttonClass("danger")}>
                               Ta bort
                             </button>
                           </div>
@@ -1615,7 +1668,7 @@ export default function OtherCompetitionAdminEditor({
                             <label className="space-y-2">
                               <span className="text-xs uppercase tracking-[0.18em] text-white/45">Format för denna del</span>
                               <select
-                                disabled={locked}
+                                disabled={roundLocked}
                                 value={part.format ?? round.format}
                                 onChange={(e) => {
                                   const option = FORMAT_OPTIONS.find((item) => item.value === e.target.value);
@@ -1627,7 +1680,7 @@ export default function OtherCompetitionAdminEditor({
                                     },
                                   });
                                 }}
-                                className={inputClass(locked)}
+                                className={inputClass(roundLocked)}
                               >
                                 {FORMAT_OPTIONS.map((option) => (
                                   <option key={option.value} value={option.value}>
@@ -1639,18 +1692,18 @@ export default function OtherCompetitionAdminEditor({
                             <label className="space-y-2">
                               <span className="text-xs uppercase tracking-[0.18em] text-white/45">Eget formatnamn</span>
                               <input
-                                disabled={locked || (part.format ?? round.format) !== "custom"}
+                                disabled={roundLocked || (part.format ?? round.format) !== "custom"}
                                 value={part.customFormatName ?? ""}
                                 onChange={(e) => patchRoundPart(round, part.id, { customFormatName: e.target.value })}
                                 placeholder="Endast för custom"
-                                className={inputClass(locked || (part.format ?? round.format) !== "custom")}
+                                className={inputClass(roundLocked || (part.format ?? round.format) !== "custom")}
                               />
                             </label>
                           </div>
                           <div className="mt-3">
                             <ScoringModelEditor
                               model={part.scoringModel}
-                              disabled={locked}
+                              disabled={roundLocked}
                               onChange={(scoringModel) => patchRoundPart(round, part.id, { scoringModel })}
                             />
                           </div>
@@ -1670,7 +1723,7 @@ export default function OtherCompetitionAdminEditor({
                   <div className="mt-4">
                     <ScoringModelEditor
                       model={round.scoringModel}
-                      disabled={locked}
+                      disabled={roundLocked}
                       onChange={(scoringModel) => patchRound(round.id, { scoringModel })}
                     />
                   </div>
@@ -1708,25 +1761,25 @@ export default function OtherCompetitionAdminEditor({
                       <div className="mt-1 text-sm text-white/55">Bygg bollar, matcher eller vilande lag för denna speldag.</div>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
-                      <button type="button" disabled={locked} onClick={() => generateSchedule(round)} className={buttonClass("primary")}>
+                      <button type="button" disabled={roundLocked} onClick={() => generateSchedule(round)} className={buttonClass("primary")}>
                         Generera
                       </button>
-                      <button type="button" disabled={locked} onClick={() => addScheduleItem(round)} className={buttonClass()}>
+                      <button type="button" disabled={roundLocked} onClick={() => addScheduleItem(round)} className={buttonClass()}>
                         Lägg till boll/match
                       </button>
                     </div>
                   </div>
                   <label className="mt-3 block space-y-2">
                     <span className="text-xs uppercase tracking-[0.18em] text-white/45">Antal bollar/matcher</span>
-                    <input disabled={locked} type="number" min={0} value={round.ballsCount} onChange={(e) => patchRound(round.id, { ballsCount: Number(e.target.value) || 0 })} placeholder="Används av generatorn" className={inputClass(locked)} />
+                    <input disabled={roundLocked} type="number" min={0} value={round.ballsCount} onChange={(e) => patchRound(round.id, { ballsCount: Number(e.target.value) || 0 })} placeholder="Används av generatorn" className={inputClass(roundLocked)} />
                   </label>
                 <div className="mt-4 grid gap-3">
                   {round.schedule.map((item) => (
                     <div key={item.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                       <div className="grid gap-3 md:grid-cols-[130px_minmax(0,1fr)_auto]">
-                        <input disabled={locked} value={item.time} onChange={(e) => patchScheduleItem(round, item.id, { time: e.target.value })} placeholder="Tid" className={inputClass(locked)} />
-                        <input disabled={locked} value={item.title} onChange={(e) => patchScheduleItem(round, item.id, { title: e.target.value })} placeholder="Boll/match" className={inputClass(locked)} />
-                        <button type="button" disabled={locked} onClick={() => removeScheduleItem(round, item.id)} className={buttonClass("danger")}>
+                        <input disabled={roundLocked} value={item.time} onChange={(e) => patchScheduleItem(round, item.id, { time: e.target.value })} placeholder="Tid" className={inputClass(roundLocked)} />
+                        <input disabled={roundLocked} value={item.title} onChange={(e) => patchScheduleItem(round, item.id, { title: e.target.value })} placeholder="Boll/match" className={inputClass(roundLocked)} />
+                        <button type="button" disabled={roundLocked} onClick={() => removeScheduleItem(round, item.id)} className={buttonClass("danger")}>
                           Ta bort
                         </button>
                       </div>
@@ -1743,7 +1796,7 @@ export default function OtherCompetitionAdminEditor({
                                   <button
                                     key={competitor.id}
                                     type="button"
-                                    disabled={locked}
+                                    disabled={roundLocked}
                                     onClick={() => removeCompetitorFromScheduleItem(round, item.id, competitor.id)}
                                     className="rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-1.5 text-left text-sm font-medium text-sky-50 transition hover:bg-sky-400/18 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
@@ -1760,7 +1813,7 @@ export default function OtherCompetitionAdminEditor({
                                   <button
                                     key={competitor.id}
                                     type="button"
-                                    disabled={locked}
+                                    disabled={roundLocked}
                                     onClick={() => moveCompetitorToScheduleItem(round, item.id, competitor.id)}
                                     className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-left text-sm text-white/82 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                                   >
@@ -1786,7 +1839,7 @@ export default function OtherCompetitionAdminEditor({
                             </div>
                             <button
                               type="button"
-                              disabled={locked}
+                              disabled={roundLocked}
                               onClick={() => patchScheduleItem(round, item.id, { pairings: defaultMatchPairings(round, item.competitorIds) })}
                               className={buttonClass("primary")}
                             >
@@ -1799,7 +1852,7 @@ export default function OtherCompetitionAdminEditor({
                                 <div className="text-sm font-semibold">
                                   {round.format === "switch_match_9" ? segmentLabel(segment) : "Matcher"}
                                 </div>
-                                <button type="button" disabled={locked} onClick={() => addSchedulePairing(round, item, segment)} className={buttonClass()}>
+                                <button type="button" disabled={roundLocked} onClick={() => addSchedulePairing(round, item, segment)} className={buttonClass()}>
                                   Lägg till match
                                 </button>
                               </div>
@@ -1808,14 +1861,14 @@ export default function OtherCompetitionAdminEditor({
                                   {[0, 1].map((playerIndex) => (
                                     <select
                                       key={playerIndex}
-                                      disabled={locked}
+                                      disabled={roundLocked}
                                       value={pairing.playerIds[playerIndex] ?? ""}
                                       onChange={(e) => {
                                         const playerIds = pairing.playerIds.slice();
                                         playerIds[playerIndex] = e.target.value;
                                         patchSchedulePairing(round, item, pairing.id, { playerIds });
                                       }}
-                                      className={inputClass(locked)}
+                                      className={inputClass(roundLocked)}
                                     >
                                       <option value="">Välj spelare</option>
                                       {pairingPlayersForItem(item).map((player) => {
@@ -1829,13 +1882,13 @@ export default function OtherCompetitionAdminEditor({
                                     </select>
                                   ))}
                                   <input
-                                    disabled={locked}
+                                    disabled={roundLocked}
                                     value={pairing.resultLabel}
                                     onChange={(e) => patchSchedulePairing(round, item, pairing.id, { resultLabel: e.target.value })}
                                     placeholder="Resultat, t.ex. Simon 2&1"
-                                    className={inputClass(locked)}
+                                    className={inputClass(roundLocked)}
                                   />
-                                  <button type="button" disabled={locked} onClick={() => removeSchedulePairing(round, item, pairing.id)} className={buttonClass("danger")}>
+                                  <button type="button" disabled={roundLocked} onClick={() => removeSchedulePairing(round, item, pairing.id)} className={buttonClass("danger")}>
                                     Ta bort
                                   </button>
                                 </div>
@@ -1844,7 +1897,7 @@ export default function OtherCompetitionAdminEditor({
                           ))}
                         </div>
                       ) : null}
-                      <textarea disabled={locked} value={item.note} onChange={(e) => patchScheduleItem(round, item.id, { note: e.target.value })} placeholder="Notering" className={`${inputClass(locked)} mt-3 min-h-20`} />
+                      <textarea disabled={roundLocked} value={item.note} onChange={(e) => patchScheduleItem(round, item.id, { note: e.target.value })} placeholder="Notering" className={`${inputClass(roundLocked)} mt-3 min-h-20`} />
                     </div>
                   ))}
                   {round.schedule.length === 0 ? (
@@ -1896,20 +1949,42 @@ export default function OtherCompetitionAdminEditor({
                     {selectedScoringUnit.holes} hål · {scoringKindLabel(scoringModelForUnit(selectedScoringUnit).kind)}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  disabled={locked}
+                  onClick={() =>
+                    patchRound(selectedScoringUnit.round.id, {
+                      locked: !selectedScoringUnit.round.locked,
+                      lockedAt: selectedScoringUnit.round.locked ? null : new Date().toISOString(),
+                    })
+                  }
+                  className={selectedScoringUnit.round.locked ? buttonClass("danger") : buttonClass("success")}
+                >
+                  {selectedScoringUnit.round.locked ? "Lås upp runda" : "Lås runda"}
+                </button>
               </div>
-                <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
+              {selectedScoringUnit.round.locked ? (
+                <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">
+                  Rundan är låst. Lås upp den om resultat eller tabellpoäng behöver ändras.
+                </div>
+              ) : null}
+              <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
                 {selectedScoringUnit.round.playMode === "team"
                   ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
                 Uppdelade 9-hålsdelar matas in var för sig.
               </div>
               <div className="mt-4 grid gap-3">
-                {competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
-                  const result = ensureUnitResults(selectedScoringUnit).find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
+                {(() => {
+                  const unitResults = ensureUnitResults(selectedScoringUnit);
+                  const playoffIds = firstPlaceTieIds(selectedScoringUnit, unitResults);
+                  return competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
+                  const result = unitResults.find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
                   const model = scoringModelForUnit(selectedScoringUnit);
                   const format = unitFormat(selectedScoringUnit);
                   const members = competitor.type === "team" ? teamMembers(competitor.id) : [];
                   const usePlayerScores = model.kind === "placement" && competitor.type === "team" && usesPlayerBallScores(format);
+                  const showPlayoff = playoffIds.has(competitor.id);
                   return (
                     <div key={competitor.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1922,7 +1997,7 @@ export default function OtherCompetitionAdminEditor({
                             <label key={member.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                               <span className="truncate text-sm font-medium">{firstName(member.name)}</span>
                               <input
-                                disabled={locked}
+                                disabled={selectedRoundLocked}
                                 type="number"
                                 value={result.playerScores?.[member.id] ?? ""}
                                 onChange={(e) => patchPlayerScore(selectedScoringUnit, competitor.id, member.id, e.target.value)}
@@ -1937,22 +2012,22 @@ export default function OtherCompetitionAdminEditor({
                           <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultattext</span>
                             <input
-                              disabled={locked}
+                              disabled={selectedRoundLocked}
                               value={result.scoreLabel}
                               onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
                               placeholder="34 p"
-                              className={inputClass(locked)}
+                              className={inputClass(selectedRoundLocked)}
                             />
                           </label>
                           <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format)}</span>
                             <input
-                              disabled={locked}
+                              disabled={selectedRoundLocked}
                               type="number"
                               value={result.rawScore ?? ""}
                               onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
                               placeholder="34"
-                              className={inputClass(locked)}
+                              className={inputClass(selectedRoundLocked)}
                             />
                           </label>
                         </div>
@@ -1961,22 +2036,22 @@ export default function OtherCompetitionAdminEditor({
                           <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultat</span>
                             <input
-                              disabled={locked}
+                              disabled={selectedRoundLocked}
                               value={result.scoreLabel}
                               onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
                               placeholder="2&1, delad eller vinst"
-                              className={inputClass(locked)}
+                              className={inputClass(selectedRoundLocked)}
                             />
                           </label>
                           <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng till laget</span>
                             <input
-                              disabled={locked}
+                              disabled={selectedRoundLocked}
                               type="number"
                               value={result.points}
                               onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { points: Number(e.target.value) || 0 })}
                               placeholder="2"
-                              className={inputClass(locked)}
+                              className={inputClass(selectedRoundLocked)}
                             />
                           </label>
                         </div>
@@ -1990,23 +2065,23 @@ export default function OtherCompetitionAdminEditor({
                         <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
                           Tabellpoäng <span className="font-semibold tabular-nums">{fmtPoints(result.points)}</span>
                         </div>
-                        <input
-                          disabled={locked}
-                          type="number"
-                          value={result.placementOverride ?? ""}
-                          onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { placementOverride: e.target.value === "" ? null : Number(e.target.value) })}
-                          placeholder="Placering override"
-                          className={inputClass(locked)}
-                        />
-                        <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3">
-                          <input disabled={locked} type="checkbox" checked={result.winnerOverride} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { winnerOverride: e.target.checked })} />
-                          <span className="text-sm">Vinnaroverride</span>
-                        </label>
+                        {showPlayoff ? (
+                          <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3">
+                            <input
+                              disabled={selectedRoundLocked}
+                              type="checkbox"
+                              checked={result.winnerOverride}
+                              onChange={(e) => setPlayoffWinner(selectedScoringUnit, competitor.id, e.target.checked)}
+                            />
+                            <span className="text-sm text-amber-50">Vann särspel</span>
+                          </label>
+                        ) : null}
                       </div>
-                      <textarea disabled={locked} value={result.note} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { note: e.target.value })} placeholder="Anteckning, särspel eller domslut" className={`${inputClass(locked)} mt-3 min-h-20`} />
+                      <textarea disabled={selectedRoundLocked} value={result.note} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { note: e.target.value })} placeholder="Anteckning eller särspel" className={`${inputClass(selectedRoundLocked)} mt-3 min-h-20`} />
                     </div>
                   );
-                })}
+                });
+                })()}
               </div>
             </div>
           ) : (
@@ -2014,35 +2089,6 @@ export default function OtherCompetitionAdminEditor({
               Skapa en speldag först.
             </div>
           )}
-
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
-            <h2 className="text-xl font-semibold">Slutställning och manuella overrides</h2>
-            <div className="mt-4 grid gap-2">
-              {standings.map((row) => (
-                <div key={row.competitor.id} className="grid grid-cols-[54px_minmax(0,1fr)_110px_120px] items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                  <div className="font-semibold tabular-nums">{row.placement ?? "-"}</div>
-                  <div className="min-w-0 truncate">{row.competitor.name}</div>
-                  <div className="text-right tabular-nums">{row.total}</div>
-                  <input
-                    disabled={locked}
-                    type="number"
-                    value={config.finalPlacementOverrides[row.competitor.id] ?? ""}
-                    onChange={(e) =>
-                      patchConfig((prev) => ({
-                        ...prev,
-                        finalPlacementOverrides: {
-                          ...prev.finalPlacementOverrides,
-                          [row.competitor.id]: e.target.value === "" ? null : Number(e.target.value),
-                        },
-                      }))
-                    }
-                    placeholder="Override"
-                    className="min-h-10 rounded-xl border border-white/10 bg-black/30 px-3 text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
         </section>
       ) : null}
 

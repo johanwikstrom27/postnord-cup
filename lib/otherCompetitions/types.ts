@@ -86,6 +86,8 @@ export type OtherCompetitionRound = {
   scoringModel: OtherCompetitionScoringModel;
   parts?: OtherCompetitionRoundPart[];
   schedule: OtherCompetitionScheduleItem[];
+  locked?: boolean;
+  lockedAt?: string | null;
   sortOrder: number;
 };
 

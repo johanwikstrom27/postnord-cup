@@ -58,6 +58,8 @@ export function createRound(format: OtherCompetitionFormat, order: number): Othe
     scoringModel: defaultScoringModel(option.scoringKind),
     parts: [],
     schedule: [],
+    locked: false,
+    lockedAt: null,
     sortOrder: order,
   };
 }

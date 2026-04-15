@@ -196,15 +196,9 @@ export function rankEntries(
     competitor: Competitor;
     points: number;
     result?: OtherCompetitionResult;
-    placementOverride?: number | null;
   }>
 ): RankedEntry[] {
   const sorted = entries.slice().sort((a, b) => {
-    const ao = a.placementOverride ?? a.result?.placementOverride ?? null;
-    const bo = b.placementOverride ?? b.result?.placementOverride ?? null;
-    if (ao != null && bo != null && ao !== bo) return ao - bo;
-    if (ao != null && bo == null) return -1;
-    if (ao == null && bo != null) return 1;
     if (b.points !== a.points) return b.points - a.points;
     if (a.result?.winnerOverride && !b.result?.winnerOverride) return -1;
     if (!a.result?.winnerOverride && b.result?.winnerOverride) return 1;
@@ -213,36 +207,32 @@ export function rankEntries(
 
   let currentPlace = 1;
   let lastPoints: number | null = null;
+  let lastWinnerOverride: boolean | null = null;
   let lastPlace = 1;
 
   return sorted.map((entry, index) => {
-    const override = entry.placementOverride ?? entry.result?.placementOverride ?? null;
+    const winnerOverride = Boolean(entry.result?.winnerOverride);
     let placement: number;
 
-    if (override != null && Number.isFinite(override) && override > 0) {
-      placement = Math.trunc(override);
+    if (lastPoints === null) {
+      placement = 1;
+    } else if (entry.points === lastPoints && winnerOverride === lastWinnerOverride) {
+      placement = lastPlace;
     } else {
-      if (lastPoints === null) {
-        placement = 1;
-      } else if (entry.points === lastPoints) {
-        placement = lastPlace;
-      } else {
-        currentPlace = index + 1;
-        placement = currentPlace;
-      }
+      currentPlace = index + 1;
+      placement = currentPlace;
     }
 
-    if (override == null) {
-      lastPoints = entry.points;
-      lastPlace = placement;
-    }
+    lastPoints = entry.points;
+    lastWinnerOverride = winnerOverride;
+    lastPlace = placement;
 
     return {
       competitor: entry.competitor,
       points: entry.points,
       placement,
-      overridden: override != null,
-      winnerOverride: Boolean(entry.result?.winnerOverride),
+      overridden: false,
+      winnerOverride,
       result: entry.result,
     };
   });
@@ -308,7 +298,6 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
       competitor,
       points: total,
       roundPoints,
-      placementOverride: config.finalPlacementOverrides[competitor.id] ?? null,
     };
   });
 

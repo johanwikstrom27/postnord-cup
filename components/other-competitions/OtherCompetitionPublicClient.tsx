@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { OtherCompetitionRow } from "@/lib/otherCompetitions/types";
+import type { OtherCompetitionPlayer, OtherCompetitionRow } from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
 import { formatLabel } from "@/lib/otherCompetitions/templates";
 import {
+  type Competitor,
   competitorsForRound,
   roundLeaderboard,
+  teamDisplayName,
   totalStandings,
 } from "@/lib/otherCompetitions/scoring";
 
@@ -45,6 +47,22 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
 
 function fmtPoints(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(".", ",");
+}
+
+function TeamBadge({ competitor }: { competitor: Pick<Competitor, "teamName" | "teamColor" | "teamIcon" | "type"> }) {
+  if (!competitor.teamName) return null;
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium text-white/86"
+      style={{
+        backgroundColor: `${competitor.teamColor ?? "#ffffff"}22`,
+        borderColor: `${competitor.teamColor ?? "#ffffff"}66`,
+      }}
+    >
+      <span aria-hidden>{competitor.teamIcon ?? "◆"}</span>
+      <span className="truncate">{competitor.teamName}</span>
+    </span>
+  );
 }
 
 export default function OtherCompetitionPublicClient({
@@ -188,8 +206,26 @@ export default function OtherCompetitionPublicClient({
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{row.competitor.name}</div>
-                    {row.competitor.memberNames.length > 1 ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                      {row.competitor.type === "team" && row.competitor.teamColor ? (
+                        <span
+                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-xs"
+                          style={{
+                            backgroundColor: `${row.competitor.teamColor}33`,
+                            borderColor: `${row.competitor.teamColor}88`,
+                          }}
+                          aria-hidden
+                        >
+                          {row.competitor.teamIcon ?? "◆"}
+                        </span>
+                      ) : null}
+                      <div className="truncate font-medium">{row.competitor.name}</div>
+                    </div>
+                    {row.competitor.type === "player" && row.competitor.teamName ? (
+                      <div className="mt-1">
+                        <TeamBadge competitor={row.competitor} />
+                      </div>
+                    ) : row.competitor.memberNames.length > 1 ? (
                       <div className="truncate text-xs text-white/48">{row.competitor.memberNames.join(", ")}</div>
                     ) : null}
                   </div>
@@ -212,7 +248,7 @@ export default function OtherCompetitionPublicClient({
       {tab === "schedule" ? (
         <section className="grid gap-4">
           {rounds.map((round) => {
-            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item.name]));
+            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
             const rows = roundLeaderboard(competition.config, round);
             return (
               <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
@@ -233,8 +269,24 @@ export default function OtherCompetitionPublicClient({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold">{item.title || "Boll/match"}</div>
-                          <div className="mt-1 text-sm text-white/58">
-                            {item.competitorIds.map((id) => competitors.get(id) ?? id).join(" · ")}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {item.competitorIds.map((id) => {
+                              const competitor = competitors.get(id);
+                              return competitor ? (
+                                <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/78">
+                                  {competitor.name}
+                                  {competitor.type === "player" && competitor.teamName ? (
+                                    <span className="ml-2 inline-flex align-middle">
+                                      <TeamBadge competitor={competitor} />
+                                    </span>
+                                  ) : null}
+                                </span>
+                              ) : (
+                                <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/58">
+                                  {id}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                         <div className="shrink-0 text-sm text-white/70">{item.time}</div>
@@ -258,6 +310,11 @@ export default function OtherCompetitionPublicClient({
                           <div className="min-w-0">
                             <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
                             <span className="font-medium">{row.competitor.name}</span>
+                            {row.competitor.type === "player" && row.competitor.teamName ? (
+                              <span className="ml-2 inline-flex align-middle">
+                                <TeamBadge competitor={row.competitor} />
+                              </span>
+                            ) : null}
                           </div>
                           <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
                         </div>
@@ -277,12 +334,26 @@ export default function OtherCompetitionPublicClient({
             ? competition.config.teams.map((team) => {
                 const members = team.memberIds
                   .map((id) => competition.config.players.find((player) => player.id === id))
-                  .filter(Boolean);
+                  .filter(Boolean) as OtherCompetitionPlayer[];
+                const targetSize = Math.max(1, Number(team.targetSize ?? 0) || members.length || 1);
                 return (
                   <div key={team.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                    <h2 className="text-xl font-semibold">
-                      {team.name || members.map((member) => member?.name).join(" & ") || "Lag"}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 text-lg font-semibold"
+                        style={{ backgroundColor: `${team.color}33`, borderColor: `${team.color}88` }}
+                      >
+                        {team.icon ?? "◆"}
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="truncate text-xl font-semibold">
+                          {team.name || teamDisplayName(team, competition.config.players) || "Lag"}
+                        </h2>
+                        <div className="text-xs text-white/50">
+                          {members.length}/{targetSize} platser
+                        </div>
+                      </div>
+                    </div>
                     <div className="mt-3 grid gap-2">
                       {members.map((member) =>
                         member ? (
@@ -292,6 +363,11 @@ export default function OtherCompetitionPublicClient({
                           </div>
                         ) : null
                       )}
+                      {Array.from({ length: Math.max(0, targetSize - members.length) }).map((_, index) => (
+                        <div key={`${team.id}-empty-${index}`} className="rounded-2xl border border-dashed border-white/10 px-3 py-2 text-sm text-white/42">
+                          Tom plats {members.length + index + 1}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );

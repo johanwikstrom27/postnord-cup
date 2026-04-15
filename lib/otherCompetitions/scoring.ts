@@ -12,6 +12,10 @@ export type Competitor = {
   name: string;
   avatarUrl: string | null;
   memberNames: string[];
+  teamId?: string | null;
+  teamName?: string | null;
+  teamColor?: string | null;
+  teamIcon?: string | null;
 };
 
 export type RankedEntry = {
@@ -35,13 +39,17 @@ function bySortOrder<T extends { sortOrder: number }>(rows: T[]) {
   return rows.slice().sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+export function teamByPlayerId(config: OtherCompetitionConfig, playerId: string) {
+  return config.teams.find((team) => team.memberIds.includes(playerId)) ?? null;
+}
+
 export function teamDisplayName(team: OtherCompetitionTeam, players: OtherCompetitionPlayer[]) {
   const explicit = team.name.trim();
   if (explicit) return explicit;
 
   const byId = new Map(players.map((player) => [player.id, player.name]));
   const names = team.memberIds.map((id) => byId.get(id)).filter((name): name is string => Boolean(name));
-  if (names.length === 0) return "Lag utan spelare";
+  if (names.length === 0) return `Lag ${team.sortOrder + 1}`;
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} & ${names[1]}`;
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
@@ -60,17 +68,28 @@ export function competitorsForRound(config: OtherCompetitionConfig, round: Other
         name: teamDisplayName(team, config.players),
         avatarUrl: members[0]?.avatarUrl ?? null,
         memberNames: members.map((member) => member.name),
+        teamId: team.id,
+        teamName: teamDisplayName(team, config.players),
+        teamColor: team.color,
+        teamIcon: team.icon ?? null,
       };
     });
   }
 
-  return bySortOrder(config.players).map((player) => ({
-    id: player.id,
-    type: "player",
-    name: player.name,
-    avatarUrl: player.avatarUrl,
-    memberNames: [player.name],
-  }));
+  return bySortOrder(config.players).map((player) => {
+    const team = teamByPlayerId(config, player.id);
+    return {
+      id: player.id,
+      type: "player" as const,
+      name: player.name,
+      avatarUrl: player.avatarUrl,
+      memberNames: [player.name],
+      teamId: team?.id ?? null,
+      teamName: team ? teamDisplayName(team, config.players) : null,
+      teamColor: team?.color ?? null,
+      teamIcon: team?.icon ?? null,
+    };
+  });
 }
 
 export function allCompetitors(config: OtherCompetitionConfig): Competitor[] {
@@ -87,17 +106,28 @@ export function allCompetitors(config: OtherCompetitionConfig): Competitor[] {
         name: teamDisplayName(team, config.players),
         avatarUrl: members[0]?.avatarUrl ?? null,
         memberNames: members.map((member) => member.name),
+        teamId: team.id,
+        teamName: teamDisplayName(team, config.players),
+        teamColor: team.color,
+        teamIcon: team.icon ?? null,
       };
     });
   }
 
-  return bySortOrder(config.players).map((player) => ({
-    id: player.id,
-    type: "player",
-    name: player.name,
-    avatarUrl: player.avatarUrl,
-    memberNames: [player.name],
-  }));
+  return bySortOrder(config.players).map((player) => {
+    const team = teamByPlayerId(config, player.id);
+    return {
+      id: player.id,
+      type: "player" as const,
+      name: player.name,
+      avatarUrl: player.avatarUrl,
+      memberNames: [player.name],
+      teamId: team?.id ?? null,
+      teamName: team ? teamDisplayName(team, config.players) : null,
+      teamColor: team?.color ?? null,
+      teamIcon: team?.icon ?? null,
+    };
+  });
 }
 
 export function resultTotal(result: OtherCompetitionResult | undefined, round?: OtherCompetitionRound) {
@@ -188,8 +218,26 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
     let total = 0;
 
     for (const round of config.rounds) {
-      const result = (config.results[round.id] ?? []).find((row) => row.competitorId === competitor.id);
-      const points = resultTotal(result, round);
+      const results = config.results[round.id] ?? [];
+      let points = 0;
+
+      if (competitor.type === "team") {
+        if (round.playMode === "team") {
+          points = resultTotal(results.find((row) => row.competitorId === competitor.id), round);
+        } else {
+          const team = config.teams.find((row) => row.id === competitor.id);
+          points = (team?.memberIds ?? []).reduce((sum, playerId) => {
+            const result = results.find((row) => row.competitorId === playerId);
+            return sum + resultTotal(result, round);
+          }, 0);
+        }
+      } else if (round.playMode === "team") {
+        const team = teamByPlayerId(config, competitor.id);
+        points = resultTotal(results.find((row) => row.competitorId === team?.id), round);
+      } else {
+        points = resultTotal(results.find((row) => row.competitorId === competitor.id), round);
+      }
+
       roundPoints[round.id] = points;
       total += points;
     }
@@ -224,6 +272,10 @@ export function applyPlacementScoring(
         name: result.competitorId,
         avatarUrl: null,
         memberNames: [],
+        teamId: null,
+        teamName: null,
+        teamColor: null,
+        teamIcon: null,
       },
       points: Number(result.rawScore ?? result.points ?? 0),
       result,

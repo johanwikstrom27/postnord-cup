@@ -13,6 +13,8 @@ export const EMPTY_OTHER_COMPETITION_CONFIG: OtherCompetitionConfig = {
   finalPlacementOverrides: {},
   settings: {
     teamSize: 2,
+    plannedPlayerCount: 12,
+    plannedTeamCount: 6,
     isTeamCompetition: true,
   },
 };

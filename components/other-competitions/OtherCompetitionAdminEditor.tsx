@@ -15,6 +15,7 @@ import type {
 import { normalizeConfig, normalizeSlug, statusLabel } from "@/lib/otherCompetitions/data";
 import { FORMAT_OPTIONS, createRound, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
+  type Competitor,
   competitorsForRound,
   resultTotal,
   roundLeaderboard,
@@ -66,6 +67,37 @@ function buttonClass(tone: "default" | "primary" | "danger" | "success" = "defau
     return "rounded-2xl border border-sky-300/30 bg-sky-400/12 px-4 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/18";
   }
   return "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10";
+}
+
+const TEAM_ICONS = ["◆", "●", "▲", "■", "✦", "✚", "⬟", "★", "◇", "⬢", "✹", "✶"];
+const TEAM_COLORS = ["#2dd4bf", "#60a5fa", "#f59e0b", "#f472b6", "#a3e635", "#c084fc", "#fb7185", "#34d399"];
+
+function randomTeamIcon(index: number) {
+  return TEAM_ICONS[(index + Math.floor(Math.random() * TEAM_ICONS.length)) % TEAM_ICONS.length];
+}
+
+function randomTeamColor(index: number) {
+  return TEAM_COLORS[(index + Math.floor(Math.random() * TEAM_COLORS.length)) % TEAM_COLORS.length];
+}
+
+function teamTargetSize(team: OtherCompetitionTeam) {
+  return Math.max(1, Number(team.targetSize ?? 0) || team.memberIds.length || 1);
+}
+
+function TeamPill({ competitor }: { competitor: Pick<Competitor, "teamName" | "teamColor" | "teamIcon"> }) {
+  if (!competitor.teamName) return null;
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium text-white/84"
+      style={{
+        backgroundColor: `${competitor.teamColor ?? "#ffffff"}22`,
+        borderColor: `${competitor.teamColor ?? "#ffffff"}66`,
+      }}
+    >
+      <span aria-hidden>{competitor.teamIcon ?? "◆"}</span>
+      <span className="truncate">{competitor.teamName}</span>
+    </span>
+  );
 }
 
 function fmtTime(iso: string | null) {
@@ -275,7 +307,9 @@ export default function OtherCompetitionAdminEditor({
         {
           id: crypto.randomUUID(),
           name: "",
-          color: "#2dd4bf",
+          color: randomTeamColor(prev.teams.length),
+          icon: randomTeamIcon(prev.teams.length),
+          targetSize: Math.max(1, Number(prev.settings.teamSize ?? 2)),
           memberIds: [],
           sortOrder: prev.teams.length,
         },
@@ -286,21 +320,26 @@ export default function OtherCompetitionAdminEditor({
 
   function generateTeams() {
     if (locked) return;
-    const teamSize = Math.max(1, Number(config.settings.teamSize ?? 2));
+    const plannedPlayers = Math.max(1, Number(config.settings.plannedPlayerCount ?? config.players.length ?? 12));
+    const plannedTeams = Math.max(1, Number(config.settings.plannedTeamCount ?? 1));
+    const teamSize = Math.max(1, Math.ceil(plannedPlayers / plannedTeams));
     const players = sortedPlayers(config.players);
     const teams: OtherCompetitionTeam[] = [];
 
-    for (let i = 0; i < players.length; i += teamSize) {
+    for (let index = 0; index < plannedTeams; index += 1) {
+      const firstPlayerIndex = index * teamSize;
       teams.push({
         id: crypto.randomUUID(),
         name: "",
-        color: ["#2dd4bf", "#60a5fa", "#f59e0b", "#f472b6", "#a3e635", "#c084fc"][teams.length % 6],
-        memberIds: players.slice(i, i + teamSize).map((player) => player.id),
+        color: randomTeamColor(index),
+        icon: randomTeamIcon(index),
+        targetSize: teamSize,
+        memberIds: players.slice(firstPlayerIndex, firstPlayerIndex + teamSize).map((player) => player.id),
         sortOrder: teams.length,
       });
     }
 
-    patchConfig((prev) => ({ ...prev, teams, settings: { ...prev.settings, isTeamCompetition: true } }));
+    patchConfig((prev) => ({ ...prev, teams, settings: { ...prev.settings, teamSize, isTeamCompetition: true } }));
   }
 
   function patchTeam(teamId: string, patch: Partial<OtherCompetitionTeam>) {
@@ -320,6 +359,10 @@ export default function OtherCompetitionAdminEditor({
 
   function playerTeamId(playerId: string, teams = config.teams) {
     return teams.find((team) => team.memberIds.includes(playerId))?.id ?? "";
+  }
+
+  function playerTeam(playerId: string, teams = config.teams) {
+    return teams.find((team) => team.memberIds.includes(playerId)) ?? null;
   }
 
   function movePlayerToTeam(playerId: string, targetTeamId: string) {
@@ -598,28 +641,40 @@ export default function OtherCompetitionAdminEditor({
             </div>
           </div>
           <div className="grid gap-3">
-            {sortedPlayers(config.players).map((player) => (
-              <div key={player.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_auto]">
-                  <input disabled={locked} value={player.name} onChange={(e) => patchPlayer(player.id, { name: e.target.value })} className={inputClass(locked)} />
-                  <input disabled={locked} value={player.avatarUrl ?? ""} onChange={(e) => patchPlayer(player.id, { avatarUrl: e.target.value || null })} placeholder="Bild URL" className={inputClass(locked)} />
-                  <input
-                    disabled={locked}
-                    type="number"
-                    value={player.hcp ?? ""}
-                    onChange={(e) => patchPlayer(player.id, { hcp: e.target.value === "" ? null : Number(e.target.value) })}
-                    placeholder="HCP"
-                    className={inputClass(locked)}
-                  />
-                  <button type="button" disabled={locked} onClick={() => removePlayer(player.id)} className={buttonClass("danger")}>
-                    Ta bort
-                  </button>
+            {sortedPlayers(config.players).map((player) => {
+              const team = playerTeam(player.id);
+              return (
+                <div key={player.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_120px_auto]">
+                    <input disabled={locked} value={player.name} onChange={(e) => patchPlayer(player.id, { name: e.target.value })} className={inputClass(locked)} />
+                    <input disabled={locked} value={player.avatarUrl ?? ""} onChange={(e) => patchPlayer(player.id, { avatarUrl: e.target.value || null })} placeholder="Bild URL" className={inputClass(locked)} />
+                    <input
+                      disabled={locked}
+                      type="number"
+                      value={player.hcp ?? ""}
+                      onChange={(e) => patchPlayer(player.id, { hcp: e.target.value === "" ? null : Number(e.target.value) })}
+                      placeholder="HCP"
+                      className={inputClass(locked)}
+                    />
+                    <button type="button" disabled={locked} onClick={() => removePlayer(player.id)} className={buttonClass("danger")}>
+                      Ta bort
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/45">
+                    <span>{player.sourceLabel === "postnord" ? "Importerad som snapshot från PostNord Cup" : "Extern spelare i denna modul"}</span>
+                    {team ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-white/82"
+                        style={{ backgroundColor: `${team.color}22`, borderColor: `${team.color}66` }}
+                      >
+                        <span aria-hidden>{team.icon ?? "◆"}</span>
+                        <span>{team.name || teamDisplayName(team, config.players)}</span>
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="mt-2 text-xs text-white/45">
-                  {player.sourceLabel === "postnord" ? "Importerad som snapshot från PostNord Cup" : "Extern spelare i denna modul"}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -627,23 +682,34 @@ export default function OtherCompetitionAdminEditor({
       {tab === "teams" ? (
         <section className="space-y-4">
           <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="grid gap-3 md:grid-cols-[180px_auto_auto_minmax(0,1fr)]">
+            <div className="grid gap-3 md:grid-cols-[160px_160px_auto_auto_minmax(0,1fr)]">
               <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-white/45">Lagstorlek</span>
+                <span className="text-xs uppercase tracking-[0.18em] text-white/45">Antal spelare</span>
                 <input
                   disabled={locked}
                   type="number"
                   min={1}
-                  value={config.settings.teamSize ?? 2}
-                  onChange={(e) => patchConfig((prev) => ({ ...prev, settings: { ...prev.settings, teamSize: Number(e.target.value) || 1 } }))}
+                  value={config.settings.plannedPlayerCount ?? (config.players.length || 12)}
+                  onChange={(e) => patchConfig((prev) => ({ ...prev, settings: { ...prev.settings, plannedPlayerCount: Number(e.target.value) || 1 } }))}
                   className={inputClass(locked)}
                 />
               </label>
-              <button type="button" disabled={locked} onClick={addTeam} className={buttonClass()}>
-                Lägg till lag
-              </button>
+              <label className="space-y-2">
+                <span className="text-xs uppercase tracking-[0.18em] text-white/45">Antal lag</span>
+                <input
+                  disabled={locked}
+                  type="number"
+                  min={1}
+                  value={config.settings.plannedTeamCount ?? (config.teams.length || 6)}
+                  onChange={(e) => patchConfig((prev) => ({ ...prev, settings: { ...prev.settings, plannedTeamCount: Number(e.target.value) || 1 } }))}
+                  className={inputClass(locked)}
+                />
+              </label>
               <button type="button" disabled={locked} onClick={generateTeams} className={buttonClass("primary")}>
-                Generera lag
+                Lägg till
+              </button>
+              <button type="button" disabled={locked} onClick={addTeam} className={buttonClass()}>
+                Tomt lag
               </button>
               <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-black/25 px-4">
                 <input
@@ -654,6 +720,9 @@ export default function OtherCompetitionAdminEditor({
                 />
                 <span className="text-sm text-white/80">Totalställning som lagtävling</span>
               </label>
+            </div>
+            <div className="mt-3 text-sm text-white/55">
+              Exempel: 12 spelare och 6 lag skapar 6 lag med 2 platser i varje. Finns spelarna redan importerade fylls platserna automatiskt.
             </div>
           </div>
 
@@ -699,9 +768,38 @@ export default function OtherCompetitionAdminEditor({
           <div className="grid gap-3">
             {sortedTeams(config.teams).map((team) => (
               <div key={team.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_90px_auto]">
+                <div className="mb-3 flex items-center gap-3">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 text-lg font-semibold text-white"
+                    style={{ backgroundColor: `${team.color}33`, borderColor: `${team.color}88` }}
+                  >
+                    {team.icon ?? "◆"}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold">{team.name || teamDisplayName(team, config.players) || `Lag ${team.sortOrder + 1}`}</div>
+                    <div className="text-xs text-white/48">
+                      {team.memberIds.length}/{teamTargetSize(team)} platser
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_90px_110px_130px_auto]">
                   <input disabled={locked} value={team.name} onChange={(e) => patchTeam(team.id, { name: e.target.value })} placeholder={teamDisplayName(team, config.players)} className={inputClass(locked)} />
                   <input disabled={locked} type="color" value={team.color} onChange={(e) => patchTeam(team.id, { color: e.target.value })} className="h-12 w-full rounded-2xl border border-white/10 bg-black/30 px-2" />
+                  <select disabled={locked} value={team.icon ?? "◆"} onChange={(e) => patchTeam(team.id, { icon: e.target.value })} className={inputClass(locked)}>
+                    {TEAM_ICONS.map((icon) => (
+                      <option key={icon} value={icon}>
+                        {icon}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    disabled={locked}
+                    type="number"
+                    min={1}
+                    value={teamTargetSize(team)}
+                    onChange={(e) => patchTeam(team.id, { targetSize: Number(e.target.value) || 1 })}
+                    className={inputClass(locked)}
+                  />
                   <button type="button" disabled={locked} onClick={() => removeTeam(team.id)} className={buttonClass("danger")}>
                     Ta bort
                   </button>
@@ -756,6 +854,14 @@ export default function OtherCompetitionAdminEditor({
                       Inga spelare i laget ännu.
                     </div>
                   ) : null}
+                  {Array.from({ length: Math.max(0, teamTargetSize(team) - team.memberIds.length) }).map((_, slotIndex) => (
+                    <div
+                      key={`${team.id}-slot-${slotIndex}`}
+                      className="rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-3 text-sm text-white/42"
+                    >
+                      Tom plats {team.memberIds.length + slotIndex + 1}
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -1002,7 +1108,7 @@ export default function OtherCompetitionAdminEditor({
                       </div>
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         {competitors.map((competitor) => (
-                          <label key={competitor.id} className="flex min-h-10 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3">
+                          <label key={competitor.id} className="flex min-h-10 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                             <input
                               disabled={locked}
                               type="checkbox"
@@ -1014,7 +1120,14 @@ export default function OtherCompetitionAdminEditor({
                                 patchScheduleItem(round, item.id, { competitorIds });
                               }}
                             />
-                            <span className="text-sm">{competitor.name}</span>
+                            <span className="min-w-0 text-sm">
+                              <span className="font-medium">{competitor.name}</span>
+                              {competitor.type === "player" && competitor.teamName ? (
+                                <span className="ml-2 inline-flex align-middle">
+                                  <TeamPill competitor={competitor} />
+                                </span>
+                              ) : null}
+                            </span>
                           </label>
                         ))}
                       </div>
@@ -1062,7 +1175,10 @@ export default function OtherCompetitionAdminEditor({
                   const result = ensureRoundResults(selectedRound).find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
                   return (
                     <div key={competitor.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
-                      <div className="font-semibold">{competitor.name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold">{competitor.name}</div>
+                        {competitor.type === "player" && competitor.teamName ? <TeamPill competitor={competitor} /> : null}
+                      </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-4">
                         <input disabled={locked} value={result.scoreLabel} onChange={(e) => patchResult(selectedRound, competitor.id, { scoreLabel: e.target.value })} placeholder="Resultattext" className={inputClass(locked)} />
                         <input

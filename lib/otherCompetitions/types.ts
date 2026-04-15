@@ -14,6 +14,8 @@ export type OtherCompetitionTeam = {
   id: string;
   name: string;
   color: string;
+  icon?: string;
+  targetSize?: number;
   memberIds: string[];
   sortOrder: number;
 };
@@ -89,6 +91,8 @@ export type OtherCompetitionConfig = {
   finalPlacementOverrides: Record<string, number | null>;
   settings: {
     teamSize?: number;
+    plannedPlayerCount?: number;
+    plannedTeamCount?: number;
     isTeamCompetition?: boolean;
   };
 };

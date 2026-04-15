@@ -930,6 +930,44 @@ export default function OtherCompetitionAdminEditor({
     patchRound(round.id, { schedule: round.schedule.filter((item) => item.id !== itemId) });
   }
 
+  function scheduledCompetitorIds(round: OtherCompetitionRound, exceptItemId?: string) {
+    return new Set(
+      round.schedule
+        .filter((item) => item.id !== exceptItemId)
+        .flatMap((item) => item.competitorIds)
+    );
+  }
+
+  function moveCompetitorToScheduleItem(round: OtherCompetitionRound, itemId: string, competitorId: string) {
+    if (locked) return;
+    patchRound(round.id, {
+      schedule: round.schedule.map((item) => {
+        const withoutCompetitor = item.competitorIds.filter((id) => id !== competitorId);
+        if (item.id !== itemId) return { ...item, competitorIds: withoutCompetitor };
+        if (item.competitorIds.includes(competitorId)) return item;
+        return { ...item, competitorIds: [...item.competitorIds, competitorId] };
+      }),
+    });
+  }
+
+  function removeCompetitorFromScheduleItem(round: OtherCompetitionRound, itemId: string, competitorId: string) {
+    if (locked) return;
+    patchRound(round.id, {
+      schedule: round.schedule.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              competitorIds: item.competitorIds.filter((id) => id !== competitorId),
+              pairings: (item.pairings ?? []).map((pairing) => ({
+                ...pairing,
+                playerIds: pairing.playerIds.filter((id) => id !== competitorId),
+              })),
+            }
+          : item
+      ),
+    });
+  }
+
   const saveTone =
     saveState === "error"
       ? "text-red-200"
@@ -1564,6 +1602,31 @@ export default function OtherCompetitionAdminEditor({
                 </div>
 
                 <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 p-4">
+                  {(() => {
+                    const scheduledIds = scheduledCompetitorIds(round);
+                    const pool = competitors.filter((competitor) => !scheduledIds.has(competitor.id));
+                    return (
+                      <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Spelarpool</div>
+                            <div className="mt-1 text-sm text-white/55">Ej placerade i någon boll/match.</div>
+                          </div>
+                          <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/65">
+                            {pool.length} kvar
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {pool.map((competitor) => (
+                            <span key={competitor.id} className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white/82">
+                              {competitor.name}
+                            </span>
+                          ))}
+                          {pool.length === 0 ? <span className="text-sm text-white/45">Alla är placerade.</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="text-xs uppercase tracking-[0.22em] text-white/45">4. Spelschema</div>
@@ -1592,31 +1655,49 @@ export default function OtherCompetitionAdminEditor({
                           Ta bort
                         </button>
                       </div>
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        {competitors.map((competitor) => (
-                          <label key={competitor.id} className="flex min-h-10 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
-                            <input
-                              disabled={locked}
-                              type="checkbox"
-                              checked={item.competitorIds.includes(competitor.id)}
-                              onChange={(e) => {
-                                const competitorIds = e.target.checked
-                                  ? [...item.competitorIds, competitor.id]
-                                  : item.competitorIds.filter((id) => id !== competitor.id);
-                                patchScheduleItem(round, item.id, { competitorIds });
-                              }}
-                            />
-                            <span className="min-w-0 text-sm">
-                              <span className="font-medium">{competitor.name}</span>
-                              {competitor.type === "player" && competitor.teamName ? (
-                                <span className="ml-2 inline-flex align-middle">
-                                  <TeamPill competitor={competitor} />
-                                </span>
-                              ) : null}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
+                      {(() => {
+                        const usedElsewhere = scheduledCompetitorIds(round, item.id);
+                        const selected = competitors.filter((competitor) => item.competitorIds.includes(competitor.id));
+                        const available = competitors.filter((competitor) => !item.competitorIds.includes(competitor.id) && !usedElsewhere.has(competitor.id));
+                        return (
+                          <div className="mt-3 grid gap-3">
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                              <div className="text-xs uppercase tracking-[0.16em] text-white/42">I denna boll</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {selected.map((competitor) => (
+                                  <button
+                                    key={competitor.id}
+                                    type="button"
+                                    disabled={locked}
+                                    onClick={() => removeCompetitorFromScheduleItem(round, item.id, competitor.id)}
+                                    className="rounded-full border border-sky-300/25 bg-sky-400/10 px-3 py-1.5 text-left text-sm font-medium text-sky-50 transition hover:bg-sky-400/18 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {competitor.name} <span className="text-sky-100/50">x</span>
+                                  </button>
+                                ))}
+                                {selected.length === 0 ? <span className="text-sm text-white/45">Ingen vald ännu.</span> : null}
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                              <div className="text-xs uppercase tracking-[0.16em] text-white/42">Lägg till från poolen</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {available.map((competitor) => (
+                                  <button
+                                    key={competitor.id}
+                                    type="button"
+                                    disabled={locked}
+                                    onClick={() => moveCompetitorToScheduleItem(round, item.id, competitor.id)}
+                                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-left text-sm text-white/82 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    + {competitor.name}
+                                  </button>
+                                ))}
+                                {available.length === 0 ? <span className="text-sm text-white/45">Inga lediga kvar.</span> : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {round.format === "switch_match_9" ? (
                         <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

@@ -23,11 +23,12 @@ import {
   totalStandings,
 } from "@/lib/otherCompetitions/scoring";
 
-const TABS = ["overview", "standings", "schedule", "players", "rules"] as const;
-type Tab = (typeof TABS)[number];
+const BASE_TABS = ["standings", "schedule", "players", "rules"] as const;
+type BaseTab = (typeof BASE_TABS)[number];
+type Tab = "podium" | BaseTab;
 
 function tabLabel(tab: Tab) {
-  if (tab === "overview") return "Översikt";
+  if (tab === "podium") return "Prispall";
   if (tab === "standings") return "Tabell";
   if (tab === "schedule") return "Spelschema";
   if (tab === "players") return "Lag/Spelare";
@@ -76,23 +77,6 @@ function fmtPoints(value: number) {
 
 function fmtTablePoints(value: number) {
   return `${fmtPoints(value)}p`;
-}
-
-function formatRoundDate(value: string) {
-  if (!value) return "Datum saknas";
-  const date = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function hasCompetitionStarted(competition: OtherCompetitionRow) {
-  if (competition.status === "live" || competition.status === "locked") return true;
-  if (!competition.starts_on) return false;
-  const start = new Date(`${competition.starts_on}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today >= start;
 }
 
 function earliestStartTime(round: OtherCompetitionRound) {
@@ -263,13 +247,197 @@ function TeamBadge({ competitor }: { competitor: Pick<Competitor, "teamName" | "
   );
 }
 
+function formatRoundDate(value: string) {
+  if (!value) return "Datum saknas";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function podiumHeight(placing: number) {
+  if (placing === 1) return "h-32 sm:h-36";
+  if (placing === 2) return "h-24 sm:h-28";
+  return "h-20 sm:h-24";
+}
+
+function podiumTone(placing: number) {
+  if (placing === 1) return "from-amber-300/20 via-amber-200/10 to-white/5 border-amber-200/20";
+  if (placing === 2) return "from-slate-200/20 via-slate-100/10 to-white/5 border-slate-200/20";
+  return "from-orange-400/20 via-orange-200/10 to-white/5 border-orange-200/20";
+}
+
+function podiumSymbol(placing: number) {
+  if (placing === 1) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src="/icons/final-1.png" alt="Pokalen" className="h-24 w-24 object-contain sm:h-28 sm:w-28" />
+    );
+  }
+  if (placing === 2) return <span className="text-4xl leading-none sm:text-5xl">🥈</span>;
+  return <span className="text-4xl leading-none sm:text-5xl">🥉</span>;
+}
+
+function PodiumAvatars({
+  players,
+  fallbackName,
+  fallbackAvatar,
+  placing,
+}: {
+  players: OtherCompetitionPlayer[];
+  fallbackName: string;
+  fallbackAvatar: string | null;
+  placing: number;
+}) {
+  const shownPlayers = players.slice(0, 2);
+  const size = placing === 1 ? "h-16 w-16 sm:h-[72px] sm:w-[72px]" : "h-12 w-12 sm:h-14 sm:w-14";
+  const fallbackSize = placing === 1 ? "h-16 w-16 sm:h-[72px] sm:w-[72px]" : "h-12 w-12 sm:h-14 sm:w-14";
+
+  if (shownPlayers.length === 0) {
+    return (
+      <div className={`${fallbackSize} shrink-0 overflow-hidden rounded-full border-2 border-white/10 bg-white/5`}>
+        {fallbackAvatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={fallbackAvatar} alt={fallbackName} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-sm text-white/58">
+            {fallbackName.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-center -space-x-3">
+      {shownPlayers.map((player) => (
+        <div key={player.id} className={`${size} overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5`}>
+          {player.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm text-white/58">
+              {player.name.slice(0, 1).toUpperCase()}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinishedPodium({
+  competition,
+  standings,
+}: {
+  competition: OtherCompetitionRow;
+  standings: ReturnType<typeof totalStandings>;
+}) {
+  const topThree = standings.slice(0, 3);
+
+  return (
+    <section className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/5">
+      {competition.header_image_url || competition.card_image_url ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={competition.header_image_url ?? competition.card_image_url ?? ""}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.14]"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(126,184,255,0.20),transparent_45%),linear-gradient(180deg,rgba(6,12,22,0.20),rgba(6,12,22,0.94))]" />
+        </>
+      ) : (
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(126,184,255,0.20),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.05),rgba(6,12,22,0.94))]" />
+      )}
+
+      <div className="relative p-5 sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.22em] text-white/52">Slutställning</div>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{competition.name}</h2>
+            <div className="mt-2 text-sm text-white/62">
+              {formatDateRange(competition.starts_on, competition.ends_on)}
+              {competition.location ? ` · ${competition.location}` : ""}
+            </div>
+          </div>
+          <div className="rounded-full border border-emerald-300/25 bg-emerald-400/12 px-4 py-2 text-sm font-medium text-emerald-50">
+            Slutförd
+          </div>
+        </div>
+
+        <div className="mt-7 grid grid-cols-3 items-end gap-2 sm:gap-4 lg:gap-6">
+          {[1, 0, 2].map((index) => {
+            const row = topThree[index] ?? null;
+            const visualPlace = index === 0 ? 2 : index === 1 ? 1 : 3;
+
+            if (!row) {
+              return (
+                <div
+                  key={`empty-${visualPlace}`}
+                  className="min-h-[210px] rounded-[24px] border border-dashed border-white/10 bg-black/10"
+                />
+              );
+            }
+
+            const players = playersForCompetitor(competition.config, row.competitor);
+
+            return (
+              <div key={`${row.competitor.id}-${visualPlace}`} className="min-w-0">
+                <div className="flex min-h-[220px] flex-col items-center px-1 text-center sm:px-3">
+                  <div
+                    className={
+                      visualPlace === 1
+                        ? "rounded-full bg-[radial-gradient(circle,rgba(250,214,110,0.30)_0%,rgba(250,214,110,0.08)_55%,transparent_75%)] p-[6px] shadow-[0_0_40px_rgba(245,204,96,0.35)]"
+                        : ""
+                    }
+                  >
+                    <PodiumAvatars
+                      players={players}
+                      fallbackName={row.competitor.name}
+                      fallbackAvatar={row.competitor.avatarUrl}
+                      placing={visualPlace}
+                    />
+                  </div>
+
+                  <div className="mt-3 min-w-0">
+                    <div className="text-xs font-semibold leading-tight text-white break-words sm:text-sm">
+                      {row.competitor.name}
+                    </div>
+                    <div className="mt-1 text-[10px] leading-tight text-white/60 sm:text-[11px]">
+                      Plats {row.placement ?? visualPlace} · {fmtTablePoints(row.total)}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`mt-4 flex w-full justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${
+                      visualPlace === 1 ? "items-center" : "items-start"
+                    } ${podiumHeight(visualPlace)} ${podiumTone(visualPlace)}`}
+                  >
+                    <div className={visualPlace === 1 ? "" : "pt-2"}>{podiumSymbol(visualPlace)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {topThree.length === 0 ? (
+          <div className="mt-6 rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-white/58">
+            Inga resultat att visa ännu.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export default function OtherCompetitionPublicClient({
   initialCompetition,
 }: {
   initialCompetition: OtherCompetitionRow;
 }) {
   const [competition, setCompetition] = useState(initialCompetition);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(initialCompetition.status === "locked" ? "podium" : "standings");
   const [selectedScheduleRoundId, setSelectedScheduleRoundId] = useState("");
 
   useEffect(() => {
@@ -298,18 +466,10 @@ export default function OtherCompetitionPublicClient({
   const standings = useMemo(() => totalStandings(competition.config), [competition.config]);
   const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
   const showCountdown = nextCountdown != null && nextCountdown > 0;
-  const competitionStarted = hasCompetitionStarted(competition);
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const groupedRounds = dayGroups(rounds);
-  const hasResultData = Object.values(competition.config.results).some((results) =>
-    results.some(
-      (result) =>
-        result.points !== 0 ||
-        result.rawScore != null ||
-        Boolean(result.scoreLabel) ||
-        Object.values(result.playerScores ?? {}).some((value) => typeof value === "number")
-    )
-  );
+  const tabs: Tab[] = competition.status === "locked" ? ["podium", ...BASE_TABS] : [...BASE_TABS];
+  const activeTab = tabs.some((item) => item === tab) ? tab : tabs[0];
 
   return (
     <main className="space-y-5">
@@ -350,14 +510,14 @@ export default function OtherCompetitionPublicClient({
       </section>
 
       <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-        {TABS.map((item) => (
+        {tabs.map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => setTab(item)}
             className={[
               "h-10 shrink-0 rounded-xl border px-4 text-sm font-medium transition",
-              tab === item
+              activeTab === item
                 ? "border-white/25 bg-white/12 text-white"
                 : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
             ].join(" ")}
@@ -367,35 +527,11 @@ export default function OtherCompetitionPublicClient({
         ))}
       </nav>
 
-      {tab === "overview" ? (
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Ledare</div>
-            <div className="mt-3 text-2xl font-semibold">
-              {competitionStarted && hasResultData ? standings[0]?.competitor.name ?? "Ingen tabell ännu" : "Inte startad"}
-            </div>
-            <div className="mt-1 text-sm text-white/58">
-              {competitionStarted && hasResultData && standings[0]
-                ? `${fmtPoints(standings[0].total)} poäng`
-                : competitionStarted
-                  ? "Fylls när första resultatet sparas"
-                  : "Visas när tävlingen är igång"}
-            </div>
-          </div>
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Antal rundor</div>
-            <div className="mt-3 text-2xl font-semibold">{rounds.length}</div>
-            <div className="mt-1 text-sm text-white/58">Rundor i tävlingen</div>
-          </div>
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Deltagare</div>
-            <div className="mt-3 text-2xl font-semibold">{competition.config.players.length}</div>
-            <div className="mt-1 text-sm text-white/58">{competition.config.teams.length} lag</div>
-          </div>
-        </section>
+      {activeTab === "podium" && competition.status === "locked" ? (
+        <FinishedPodium competition={competition} standings={standings} />
       ) : null}
 
-      {tab === "standings" ? (
+      {activeTab === "standings" ? (
         <section className="overflow-x-auto">
           <div className="space-y-2" style={{ minWidth: Math.max(540, 314 + rounds.length * 50) }}>
             <div
@@ -457,7 +593,7 @@ export default function OtherCompetitionPublicClient({
         </section>
       ) : null}
 
-      {tab === "schedule" ? (
+      {activeTab === "schedule" ? (
         <section className="grid gap-5">
           {groupedRounds.map((group) => (
             <div key={group.key} className="space-y-3">
@@ -655,7 +791,7 @@ export default function OtherCompetitionPublicClient({
         </section>
       ) : null}
 
-      {tab === "players" ? (
+      {activeTab === "players" ? (
         <section className="grid gap-4 md:grid-cols-2">
           {competition.config.teams.length > 0
             ? competition.config.teams.map((team) => {
@@ -713,7 +849,7 @@ export default function OtherCompetitionPublicClient({
         </section>
       ) : null}
 
-      {tab === "rules" ? (
+      {activeTab === "rules" ? (
         <section className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5">
           <div className="prose prose-invert max-w-none whitespace-pre-wrap text-sm leading-7 text-white/76">
             {competition.rules_content || "Inga stadgar är publicerade ännu."}

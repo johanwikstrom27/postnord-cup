@@ -57,7 +57,7 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
 
 function MiniAvatar({ src, name }: { src: string | null; name: string }) {
   return (
-    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5">
+    <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={name} className="h-full w-full object-cover" />
@@ -72,6 +72,10 @@ function MiniAvatar({ src, name }: { src: string | null; name: string }) {
 
 function fmtPoints(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(".", ",");
+}
+
+function fmtTablePoints(value: number) {
+  return `${fmtPoints(value)}p`;
 }
 
 function formatRoundDate(value: string) {
@@ -213,23 +217,6 @@ function playersForCompetitor(config: OtherCompetitionConfig, competitor: Compet
 
 function roundPointsFor(row: ReturnType<typeof totalStandings>[number], round: OtherCompetitionRound) {
   return scoringUnitsForRound(round).reduce((sum, unit) => sum + (row.roundPoints[unit.resultKey] ?? 0), 0);
-}
-
-function resultForCompetitorUnit(config: OtherCompetitionConfig, competitor: Competitor, unit: ReturnType<typeof scoringUnitsForRound>[number]) {
-  const results = config.results[unit.resultKey] ?? [];
-  if (unit.round.playMode === "team") return results.find((result) => result.competitorId === competitor.id);
-  if (competitor.type === "player") return results.find((result) => result.competitorId === competitor.id);
-  return teamMembers(config, competitor.id)
-    .map((member) => results.find((result) => result.competitorId === member.id))
-    .filter(Boolean)
-    .at(0);
-}
-
-function roundResultLabel(config: OtherCompetitionConfig, competitor: Competitor, round: OtherCompetitionRound) {
-  const labels = scoringUnitsForRound(round)
-    .map((unit) => resultForCompetitorUnit(config, competitor, unit)?.scoreLabel)
-    .filter((label): label is string => Boolean(label));
-  return labels.join(" / ");
 }
 
 function playerResultForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound, playerId: string) {
@@ -396,9 +383,9 @@ export default function OtherCompetitionPublicClient({
             </div>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Speldagar</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Antal rundor</div>
             <div className="mt-3 text-2xl font-semibold">{rounds.length}</div>
-            <div className="mt-1 text-sm text-white/58">Valfritt format per speldag</div>
+            <div className="mt-1 text-sm text-white/58">Rundor i tävlingen</div>
           </div>
           <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
             <div className="text-xs uppercase tracking-[0.22em] text-white/45">Deltagare</div>
@@ -409,78 +396,63 @@ export default function OtherCompetitionPublicClient({
       ) : null}
 
       {tab === "standings" ? (
-        <section className="grid gap-3">
-          <div className="hidden grid-cols-[58px_minmax(0,1fr)_repeat(var(--rounds),72px)_86px] rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-xs uppercase tracking-[0.14em] text-white/42 md:grid">
-            <div>Pl</div>
-            <div>Lag</div>
-            {rounds.map((round) => (
-              <div key={round.id} className="text-right">
-                R{round.sortOrder + 1}
-              </div>
-            ))}
-            <div className="text-right">Total</div>
-          </div>
-          <div className="grid gap-3">
-            {standings.map((row) => (
-              <div
-                key={row.competitor.id}
-                className="rounded-[22px] border border-white/10 bg-white/[0.04] p-3 md:grid md:grid-cols-[58px_minmax(0,1fr)_repeat(var(--rounds),72px)_86px] md:items-center md:gap-0"
-                style={{ "--rounds": rounds.length } as CSSProperties}
-              >
-                <div className="flex items-center justify-between gap-3 md:block">
-                  <div className="font-semibold tabular-nums text-white/86">
-                    {row.placement ?? "-"}
-                  </div>
-                  <div className="text-right text-2xl font-semibold tabular-nums md:hidden">{fmtPoints(row.total)}</div>
+        <section className="overflow-x-auto">
+          <div className="space-y-2" style={{ minWidth: Math.max(540, 314 + rounds.length * 50) }}>
+            <div
+              className="grid grid-cols-[34px_minmax(190px,1fr)_repeat(var(--rounds),50px)_66px] items-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] uppercase tracking-[0.12em] text-white/42"
+              style={{ "--rounds": rounds.length } as CSSProperties}
+            >
+              <div>Pl</div>
+              <div>Lag</div>
+              {rounds.map((round) => (
+                <div key={round.id} className="text-right">
+                  R{round.sortOrder + 1}
                 </div>
-                <div className="mt-3 flex min-w-0 items-center gap-3 md:mt-0">
-                  <div className="flex shrink-0 -space-x-2">
-                    {playersForCompetitor(competition.config, row.competitor).slice(0, 2).map((player) => (
-                      <MiniAvatar key={player.id} src={player.avatarUrl} name={player.name} />
-                    ))}
-                    {playersForCompetitor(competition.config, row.competitor).length === 0 ? (
-                      <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
-                    ) : null}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {row.competitor.type === "team" && row.competitor.teamColor ? (
-                        <span
-                          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-xs"
-                          style={{
-                            backgroundColor: `${row.competitor.teamColor}33`,
-                            borderColor: `${row.competitor.teamColor}88`,
-                          }}
-                          aria-hidden
-                        >
-                          {row.competitor.teamIcon ?? "◆"}
-                        </span>
+              ))}
+              <div className="text-right">Totalt</div>
+            </div>
+            <div className="grid gap-2">
+              {standings.map((row) => (
+                <div
+                  key={row.competitor.id}
+                  className="grid grid-cols-[34px_minmax(190px,1fr)_repeat(var(--rounds),50px)_66px] items-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2"
+                  style={{ "--rounds": rounds.length } as CSSProperties}
+                >
+                  <div className="text-sm font-semibold tabular-nums text-white/86">{row.placement ?? "-"}</div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex shrink-0 -space-x-2">
+                      {playersForCompetitor(competition.config, row.competitor).slice(0, 2).map((player) => (
+                        <MiniAvatar key={player.id} src={player.avatarUrl} name={player.name} />
+                      ))}
+                      {playersForCompetitor(competition.config, row.competitor).length === 0 ? (
+                        <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
                       ) : null}
-                      <div className="truncate font-semibold">{row.competitor.name}</div>
                     </div>
+                    {row.competitor.type === "team" && row.competitor.teamColor ? (
+                      <span
+                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[10px]"
+                        style={{
+                          backgroundColor: `${row.competitor.teamColor}33`,
+                          borderColor: `${row.competitor.teamColor}88`,
+                        }}
+                        aria-hidden
+                      >
+                        {row.competitor.teamIcon ?? "◆"}
+                      </span>
+                    ) : null}
+                    <div className="min-w-0 truncate text-sm font-semibold">{row.competitor.name}</div>
+                  </div>
+                  {rounds.map((round) => (
+                    <div key={round.id} className="text-right text-sm font-semibold tabular-nums text-white/82">
+                      {fmtTablePoints(roundPointsFor(row, round))}
+                    </div>
+                  ))}
+                  <div className="text-right text-base font-semibold tabular-nums text-white">
+                    {fmtTablePoints(row.total)}
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:contents">
-                  {rounds.map((round) => {
-                    const points = roundPointsFor(row, round);
-                    const label = roundResultLabel(competition.config, row.competitor, round);
-                    return (
-                      <div key={round.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
-                        <div className="text-[10px] uppercase tracking-[0.14em] text-white/38 md:hidden">R{round.sortOrder + 1}</div>
-                        <div className="font-semibold tabular-nums">{fmtPoints(points)}</div>
-                        {label ? <div className="truncate text-xs text-white/45 md:hidden">{label}</div> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="hidden text-right text-lg font-semibold tabular-nums md:block">
-                  {fmtPoints(row.total)}
-                </div>
-                <div className="hidden">
-                  {row.placement ?? "-"}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </section>
       ) : null}

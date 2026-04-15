@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import type { OtherCompetitionPlayer, OtherCompetitionRow } from "@/lib/otherCompetitions/types";
+import type {
+  OtherCompetitionPlayer,
+  OtherCompetitionRound,
+  OtherCompetitionRow,
+  OtherCompetitionScoringModel,
+} from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
 import { formatLabel } from "@/lib/otherCompetitions/templates";
 import {
@@ -10,6 +15,8 @@ import {
   allScoringUnits,
   competitorsForRound,
   roundLeaderboard,
+  scoringModelForUnit,
+  scoringUnitsForRound,
   teamDisplayName,
   totalStandings,
 } from "@/lib/otherCompetitions/scoring";
@@ -50,6 +57,57 @@ function fmtPoints(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(".", ",");
 }
 
+function formatRoundDate(value: string) {
+  if (!value) return "Datum saknas";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function earliestStartTime(round: OtherCompetitionRound) {
+  const times = round.schedule
+    .map((item) => item.time.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "sv"));
+  return times[0] ?? "";
+}
+
+function scoringSummary(model: OtherCompetitionScoringModel) {
+  const bits: string[] = [];
+  if (model.kind === "placement" && model.placementPoints.length) {
+    bits.push(`Placering ${model.placementPoints.join("-")}`);
+  } else if (model.kind === "match") {
+    bits.push(`Match ${model.winPoints}-${model.drawPoints}-${model.lossPoints}`);
+  } else if (model.kind === "manual") {
+    bits.push("Manuell poäng");
+  } else {
+    bits.push("Custom");
+  }
+  if (model.maxPoints != null) bits.push(`Max ${model.maxPoints}`);
+  if (model.bonusPoints) bits.push(`Bonus ${model.bonusPoints}`);
+  return bits.join(" · ");
+}
+
+function dayGroups(rounds: OtherCompetitionRound[]) {
+  const groups: Array<{ key: string; label: string; rounds: OtherCompetitionRound[] }> = [];
+  const byDate = new Map<string, OtherCompetitionRound[]>();
+
+  for (const round of rounds) {
+    const key = round.date || "no-date";
+    byDate.set(key, [...(byDate.get(key) ?? []), round]);
+  }
+
+  Array.from(byDate.entries()).forEach(([key, items], index) => {
+    groups.push({
+      key,
+      label: `Dag ${index + 1} - ${key === "no-date" ? "Datum saknas" : formatRoundDate(key)}`,
+      rounds: items,
+    });
+  });
+
+  return groups;
+}
+
 function TeamBadge({ competitor }: { competitor: Pick<Competitor, "teamName" | "teamColor" | "teamIcon" | "type"> }) {
   if (!competitor.teamName) return null;
   return (
@@ -73,6 +131,7 @@ export default function OtherCompetitionPublicClient({
 }) {
   const [competition, setCompetition] = useState(initialCompetition);
   const [tab, setTab] = useState<Tab>("overview");
+  const [selectedScheduleRoundId, setSelectedScheduleRoundId] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +161,7 @@ export default function OtherCompetitionPublicClient({
   const showCountdown = nextCountdown != null && nextCountdown > 0;
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const scoringUnits = allScoringUnits(competition.config);
+  const groupedRounds = dayGroups(rounds);
 
   return (
     <main className="space-y-5">
@@ -248,85 +308,153 @@ export default function OtherCompetitionPublicClient({
       ) : null}
 
       {tab === "schedule" ? (
-        <section className="grid gap-4">
-          {rounds.map((round) => {
-            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
-            const rows = roundLeaderboard(competition.config, round);
-            return (
-              <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold">{round.name}</h2>
-                    <div className="mt-1 text-sm text-white/58">
-                      {formatLabel(round.format, round.customFormatName)} · {round.holes} hål ·{" "}
-                      {round.playMode === "team" ? "Lag" : "Individuellt"}
-                    </div>
-                  </div>
-                  {round.date ? <div className="text-sm text-white/58">{round.date}</div> : null}
-                </div>
+        <section className="grid gap-5">
+          {groupedRounds.map((group) => (
+            <div key={group.key} className="space-y-3">
+              <div className="text-xs uppercase tracking-[0.24em] text-white/45">{group.label}</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {group.rounds.map((round) => {
+                  const units = scoringUnitsForRound(round);
+                  const firstStart = earliestStartTime(round);
+                  const selected = selectedScheduleRoundId === round.id;
+                  const rows = roundLeaderboard(competition.config, round);
+                  const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
 
-                <div className="mt-4 grid gap-2">
-                  {round.schedule.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-semibold">{item.title || "Boll/match"}</div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {item.competitorIds.map((id) => {
-                              const competitor = competitors.get(id);
-                              return competitor ? (
-                                <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/78">
-                                  {competitor.name}
-                                  {competitor.type === "player" && competitor.teamName ? (
-                                    <span className="ml-2 inline-flex align-middle">
-                                      <TeamBadge competitor={competitor} />
-                                    </span>
-                                  ) : null}
-                                </span>
-                              ) : (
-                                <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/58">
-                                  {id}
-                                </span>
-                              );
-                            })}
+                  return (
+                    <div
+                      key={round.id}
+                      className={[
+                        "overflow-hidden rounded-[22px] border bg-white/[0.04]",
+                        selected ? "border-sky-300/35" : "border-white/10",
+                      ].join(" ")}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedScheduleRoundId(selected ? "" : round.id)}
+                        className="block w-full p-4 text-left transition hover:bg-white/[0.04]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h2 className="truncate text-xl font-semibold">{round.name}</h2>
+                            <div className="mt-1 text-sm text-white/58">
+                              {formatLabel(round.format, round.customFormatName)} · {round.holes} hål ·{" "}
+                              {round.playMode === "team" ? "Lag" : "Individuellt"}
+                            </div>
+                          </div>
+                          <div className="shrink-0 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-right">
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-white/42">Start</div>
+                            <div className="text-sm font-semibold tabular-nums text-white/86">{firstStart || "--"}</div>
                           </div>
                         </div>
-                        <div className="shrink-0 text-sm text-white/70">{item.time}</div>
-                      </div>
-                      {item.note ? <div className="mt-2 text-sm text-white/55">{item.note}</div> : null}
-                    </div>
-                  ))}
-                  {round.schedule.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-white/52">
-                      Inget schema publicerat för rundan.
-                    </div>
-                  ) : null}
-                </div>
 
-                {rows.some((row) => row.points !== 0 || row.result?.scoreLabel) ? (
-                  <div className="mt-4 border-t border-white/10 pt-4">
-                    <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Ställning i denna speldag</div>
-                    <div className="grid gap-2">
-                      {rows.slice(0, 6).map((row) => (
-                        <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                          <div className="min-w-0">
-                            <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
-                            <span className="font-medium">{row.competitor.name}</span>
-                            {row.competitor.type === "player" && row.competitor.teamName ? (
-                              <span className="ml-2 inline-flex align-middle">
-                                <TeamBadge competitor={row.competitor} />
-                              </span>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs text-white/68">
+                            {round.schedule.length} bollar
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs text-white/68">
+                            {units.length > 1 ? `${units.length} poängdelar` : scoringSummary(round.scoringModel)}
+                          </span>
+                        </div>
+                      </button>
+
+                      {selected ? (
+                        <div className="border-t border-white/10 p-4">
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                              <div className="text-xs uppercase tracking-[0.18em] text-white/42">Format</div>
+                              <div className="mt-2 font-semibold">{formatLabel(round.format, round.customFormatName)}</div>
+                              <div className="mt-1 text-sm text-white/58">
+                                {round.playMode === "team" ? "Lagspel" : "Individuellt"} · {round.holes} hål
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
+                              <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Poäng på spel</div>
+                              <div className="mt-2 grid gap-1 text-sm text-white/78">
+                                {units.map((unit) => (
+                                  <div key={unit.resultKey} className="flex items-center justify-between gap-3">
+                                    <span>{unit.part ? unit.label : "Hela rundan"}</span>
+                                    <span className="text-right text-white/58">{scoringSummary(scoringModelForUnit(unit))}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-2">
+                            {round.schedule.map((item) => (
+                              <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="font-semibold">{item.title || "Boll/match"}</div>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {item.competitorIds.map((id) => {
+                                        const competitor = competitors.get(id);
+                                        return competitor ? (
+                                          <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/78">
+                                            {competitor.name}
+                                            {competitor.type === "player" && competitor.teamName ? (
+                                              <span className="ml-2 inline-flex align-middle">
+                                                <TeamBadge competitor={competitor} />
+                                              </span>
+                                            ) : null}
+                                          </span>
+                                        ) : (
+                                          <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/58">
+                                            {id}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 text-sm font-semibold tabular-nums text-white/82">
+                                    {item.time || "--"}
+                                  </div>
+                                </div>
+                                {item.note ? <div className="mt-2 text-sm text-white/55">{item.note}</div> : null}
+                              </div>
+                            ))}
+                            {round.schedule.length === 0 ? (
+                              <div className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-white/52">
+                                Inget schema publicerat för rundan.
+                              </div>
                             ) : null}
                           </div>
-                          <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
+
+                          {rows.some((row) => row.points !== 0 || row.result?.scoreLabel) ? (
+                            <div className="mt-4 border-t border-white/10 pt-4">
+                              <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Ställning i denna runda</div>
+                              <div className="grid gap-2">
+                                {rows.slice(0, 6).map((row) => (
+                                  <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                    <div className="min-w-0">
+                                      <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
+                                      <span className="font-medium">{row.competitor.name}</span>
+                                      {row.competitor.type === "player" && row.competitor.teamName ? (
+                                        <span className="ml-2 inline-flex align-middle">
+                                          <TeamBadge competitor={row.competitor} />
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                      ))}
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
+
+          {rounds.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-white/10 px-4 py-8 text-center text-white/58">
+              Inget spelschema publicerat ännu.
+            </div>
+          ) : null}
         </section>
       ) : null}
 

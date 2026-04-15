@@ -8,12 +8,36 @@ import {
   daysUntil,
   formatDateRange,
   normalizeCompetitionRow,
-  statusLabel,
 } from "@/lib/otherCompetitions/data";
+import type { OtherCompetitionRow } from "@/lib/otherCompetitions/types";
 
-function statusClass(status: string) {
+type CardStatus = "upcoming" | "live" | "finished";
+
+function parseDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function cardStatus(competition: OtherCompetitionRow): { key: CardStatus; label: string } {
+  if (competition.status === "locked") return { key: "finished", label: "Slutförd" };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const start = parseDate(competition.starts_on);
+  const end = parseDate(competition.ends_on ?? competition.starts_on);
+
+  if (start && today < start) return { key: "upcoming", label: "Kommande" };
+  if (start && end && today >= start && today <= end) return { key: "live", label: "Pågår" };
+  if (start && today >= start) return { key: "live", label: "Pågår" };
+
+  return { key: "upcoming", label: "Kommande" };
+}
+
+function statusClass(status: CardStatus) {
   if (status === "live") return "border-sky-300/35 bg-sky-400/15 text-sky-100";
-  if (status === "locked") return "border-emerald-300/35 bg-emerald-400/15 text-emerald-100";
+  if (status === "finished") return "border-emerald-300/35 bg-emerald-400/15 text-emerald-100";
   return "border-white/15 bg-black/35 text-white/85";
 }
 
@@ -37,7 +61,8 @@ export default async function OtherCompetitionsPage() {
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {competitions.map((competition) => {
           const countdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
-          const showCountdown = countdown != null && countdown > 0;
+          const displayStatus = cardStatus(competition);
+          const showCountdown = displayStatus.key === "upcoming" && countdown != null && countdown > 0;
 
           return (
             <Link
@@ -60,8 +85,8 @@ export default async function OtherCompetitionsPage() {
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-black/20 to-black/10" />
                 <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-                  <span className={`rounded-full border px-2.5 py-1 text-xs ${statusClass(competition.status)}`}>
-                    {statusLabel(competition.status)}
+                  <span className={`rounded-full border px-2.5 py-1 text-xs ${statusClass(displayStatus.key)}`}>
+                    {displayStatus.label}
                   </span>
                   {showCountdown ? (
                     <span className="rounded-full border border-amber-300/30 bg-amber-300/15 px-2.5 py-1 text-xs text-amber-100">

@@ -154,6 +154,10 @@ function roundFormatSummary(round: OtherCompetitionRound) {
   return formatLabel(round.format, round.customFormatName);
 }
 
+function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
+  return teamCount > 0 && (round.format === "single_match" || round.format === "switch_match_9");
+}
+
 function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
   return segment === "front_9" ? "Första 9" : "Bakre 9";
 }
@@ -185,7 +189,7 @@ function teamCompetitor(config: OtherCompetitionConfig, team: OtherCompetitionTe
 }
 
 function scheduleCompetitorsForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
-  if (round.format === "switch_match_9" && config.teams.length > 0) {
+  if (usesTeamPoolForMatchRound(round, config.teams.length)) {
     return sortedTeams(config.teams).map((team) => teamCompetitor(config, team));
   }
   return competitorsForRound(config, round);
@@ -566,14 +570,16 @@ export default function OtherCompetitionPublicClient({
                                     {item.time || "--"}
                                   </div>
                                 </div>
-                                {round.format === "switch_match_9" && (item.pairings ?? []).length > 0 ? (
+                                {usesTeamPoolForMatchRound(round, competition.config.teams.length) && (item.pairings ?? []).length > 0 ? (
                                   <div className="mt-3 grid gap-3 border-t border-white/10 pt-3">
-                                    {(["front_9", "back_9"] as const).map((segment) => {
+                                    {(round.format === "switch_match_9" ? (["front_9", "back_9"] as const) : (["front_9"] as const)).map((segment) => {
                                       const pairings = (item.pairings ?? []).filter((pairing) => pairing.segment === segment);
                                       if (pairings.length === 0) return null;
                                       return (
                                         <div key={segment} className="grid gap-2">
-                                          <div className="text-xs uppercase tracking-[0.16em] text-white/42">{segmentLabel(segment)}</div>
+                                          <div className="text-xs uppercase tracking-[0.16em] text-white/42">
+                                            {round.format === "switch_match_9" ? segmentLabel(segment) : "Matcher"}
+                                          </div>
                                           {pairings.map((pairing) => (
                                             <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                                               <div className="flex flex-wrap items-center gap-2">

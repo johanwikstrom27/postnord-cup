@@ -89,6 +89,10 @@ function isMatchRound(round: OtherCompetitionRound) {
   return round.scoringModel.kind === "match" || ["single_match", "switch_match_9", "team_match"].includes(round.format);
 }
 
+function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
+  return teamCount > 0 && (round.format === "single_match" || round.format === "switch_match_9");
+}
+
 function scoringKindLabel(kind: OtherCompetitionRound["scoringModel"]["kind"]) {
   if (kind === "placement") return "Tabellpoäng efter placering";
   if (kind === "match") return "Matchpoäng";
@@ -611,7 +615,7 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function scheduleCompetitorsForRound(round: OtherCompetitionRound) {
-    if (round.format === "switch_match_9" && config.teams.length > 0) {
+    if (usesTeamPoolForMatchRound(round, config.teams.length)) {
       return sortedTeams(config.teams).map(teamCompetitor);
     }
     return competitorsForRound(config, round);
@@ -861,8 +865,9 @@ export default function OtherCompetitionAdminEditor({
     patchRound(round.id, { schedule: [...round.schedule, item] });
   }
 
-  function defaultSwitchPairings(competitorIds: string[]) {
+  function defaultMatchPairings(round: OtherCompetitionRound, competitorIds: string[]) {
     const pairings: OtherCompetitionSchedulePairing[] = [];
+    const includeBackNine = round.format === "switch_match_9";
 
     if (competitorIds.every((id) => config.teams.some((team) => team.id === id))) {
       for (let index = 0; index < competitorIds.length; index += 2) {
@@ -877,11 +882,13 @@ export default function OtherCompetitionAdminEditor({
         if (a2 && b2) {
           pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a2, b2], resultLabel: "" });
         }
-        if (a1 && b2) {
-          pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a1, b2], resultLabel: "" });
-        }
-        if (a2 && b1) {
-          pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a2, b1], resultLabel: "" });
+        if (includeBackNine) {
+          if (a1 && b2) {
+            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a1, b2], resultLabel: "" });
+          }
+          if (a2 && b1) {
+            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a2, b1], resultLabel: "" });
+          }
         }
       }
       return pairings;
@@ -903,18 +910,20 @@ export default function OtherCompetitionAdminEditor({
           playerIds: group.slice(2, 4),
           resultLabel: "",
         });
-        pairings.push({
-          id: crypto.randomUUID(),
-          segment: "back_9",
-          playerIds: [group[0], group[2]],
-          resultLabel: "",
-        });
-        pairings.push({
-          id: crypto.randomUUID(),
-          segment: "back_9",
-          playerIds: [group[1], group[3]],
-          resultLabel: "",
-        });
+        if (includeBackNine) {
+          pairings.push({
+            id: crypto.randomUUID(),
+            segment: "back_9",
+            playerIds: [group[0], group[2]],
+            resultLabel: "",
+          });
+          pairings.push({
+            id: crypto.randomUUID(),
+            segment: "back_9",
+            playerIds: [group[1], group[3]],
+            resultLabel: "",
+          });
+        }
       }
     }
     return pairings;
@@ -923,7 +932,7 @@ export default function OtherCompetitionAdminEditor({
   function generateSchedule(round: OtherCompetitionRound) {
     if (locked) return;
     const competitors = scheduleCompetitorsForRound(round);
-    const defaultPerBall = round.format === "switch_match_9" && config.teams.length > 0 ? 2 : 4;
+    const defaultPerBall = usesTeamPoolForMatchRound(round, config.teams.length) ? 2 : 4;
     const ballsCount = round.ballsCount > 0 ? round.ballsCount : Math.ceil(competitors.length / defaultPerBall);
     const perBall = Math.max(1, Math.ceil(competitors.length / Math.max(1, ballsCount)));
     const schedule: OtherCompetitionScheduleItem[] = [];
@@ -936,8 +945,8 @@ export default function OtherCompetitionAdminEditor({
         title: `${itemLabel} ${schedule.length + 1}`,
         competitorIds: competitors.slice(i, i + perBall).map((competitor) => competitor.id),
         pairings:
-          round.format === "switch_match_9"
-            ? defaultSwitchPairings(competitors.slice(i, i + perBall).map((competitor) => competitor.id))
+          usesTeamPoolForMatchRound(round, config.teams.length)
+            ? defaultMatchPairings(round, competitors.slice(i, i + perBall).map((competitor) => competitor.id))
             : [],
         note: "",
       });
@@ -1006,7 +1015,7 @@ export default function OtherCompetitionAdminEditor({
         return {
           ...item,
           competitorIds,
-          pairings: round.format === "switch_match_9" ? defaultSwitchPairings(competitorIds) : item.pairings,
+          pairings: usesTeamPoolForMatchRound(round, config.teams.length) ? defaultMatchPairings(round, competitorIds) : item.pairings,
         };
       }),
     });
@@ -1021,8 +1030,8 @@ export default function OtherCompetitionAdminEditor({
               ...item,
               competitorIds: item.competitorIds.filter((id) => id !== competitorId),
               pairings:
-                round.format === "switch_match_9"
-                  ? defaultSwitchPairings(item.competitorIds.filter((id) => id !== competitorId))
+                usesTeamPoolForMatchRound(round, config.teams.length)
+                  ? defaultMatchPairings(round, item.competitorIds.filter((id) => id !== competitorId))
                   : item.pairings,
             }
           : item
@@ -1484,7 +1493,10 @@ export default function OtherCompetitionAdminEditor({
 
           {(selectedRound ? [selectedRound] : []).map((round) => {
             const competitors = scheduleCompetitorsForRound(round);
-            const poolLabel = round.format === "switch_match_9" && config.teams.length > 0 ? "Lagpool" : "Spelarpool";
+            const usesTeamPool = usesTeamPoolForMatchRound(round, config.teams.length);
+            const poolLabel = usesTeamPool ? "Lagpool" : "Spelarpool";
+            const pairingSegments: Array<OtherCompetitionSchedulePairing["segment"]> =
+              round.format === "switch_match_9" ? ["front_9", "back_9"] : ["front_9"];
             return (
               <div key={round.id} className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
                 <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1761,28 +1773,32 @@ export default function OtherCompetitionAdminEditor({
                           </div>
                         );
                       })()}
-                      {round.format === "switch_match_9" ? (
+                      {usesTeamPool ? (
                         <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                              <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Parningar 9 + 9</div>
+                              <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">
+                                {round.format === "switch_match_9" ? "Parningar 9 + 9" : "Singelmatcher"}
+                              </div>
                               <div className="mt-1 text-sm text-sky-100/65">
-                                Välj vilka två som möts första nio och vilka två som möts bakre nio.
+                                Välj två lag i bollen och ändra sedan vilka spelare som möter varandra.
                               </div>
                             </div>
                             <button
                               type="button"
                               disabled={locked}
-                              onClick={() => patchScheduleItem(round, item.id, { pairings: defaultSwitchPairings(item.competitorIds) })}
+                              onClick={() => patchScheduleItem(round, item.id, { pairings: defaultMatchPairings(round, item.competitorIds) })}
                               className={buttonClass("primary")}
                             >
                               Föreslå parningar
                             </button>
                           </div>
-                          {(["front_9", "back_9"] as const).map((segment) => (
+                          {pairingSegments.map((segment) => (
                             <div key={segment} className="mt-3 grid gap-2">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-sm font-semibold">{segmentLabel(segment)}</div>
+                                <div className="text-sm font-semibold">
+                                  {round.format === "switch_match_9" ? segmentLabel(segment) : "Matcher"}
+                                </div>
                                 <button type="button" disabled={locked} onClick={() => addSchedulePairing(round, item, segment)} className={buttonClass()}>
                                   Lägg till match
                                 </button>

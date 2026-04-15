@@ -1,0 +1,338 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
+import type { OtherCompetitionRow } from "@/lib/otherCompetitions/types";
+import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
+import { formatLabel } from "@/lib/otherCompetitions/templates";
+import {
+  competitorsForRound,
+  roundLeaderboard,
+  totalStandings,
+} from "@/lib/otherCompetitions/scoring";
+
+const TABS = ["overview", "standings", "rounds", "schedule", "players", "rules"] as const;
+type Tab = (typeof TABS)[number];
+
+function tabLabel(tab: Tab) {
+  if (tab === "overview") return "Översikt";
+  if (tab === "standings") return "Tabell";
+  if (tab === "rounds") return "Rundor";
+  if (tab === "schedule") return "Spelschema";
+  if (tab === "players") return "Lag/Spelare";
+  return "Stadgar";
+}
+
+function statusClass(status: string) {
+  if (status === "live") return "border-sky-300/35 bg-sky-400/15 text-sky-100";
+  if (status === "locked") return "border-emerald-300/35 bg-emerald-400/15 text-emerald-100";
+  return "border-white/15 bg-black/35 text-white/85";
+}
+
+function Avatar({ src, name }: { src: string | null; name: string }) {
+  return (
+    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/5">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-xs text-white/50">
+          {name.slice(0, 1).toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function fmtPoints(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(".", ",");
+}
+
+export default function OtherCompetitionPublicClient({
+  initialCompetition,
+}: {
+  initialCompetition: OtherCompetitionRow;
+}) {
+  const [competition, setCompetition] = useState(initialCompetition);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [lastUpdated, setLastUpdated] = useState(initialCompetition.updated_at);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/other-competitions/${competition.slug}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { competition?: OtherCompetitionRow };
+        if (!cancelled && data.competition) {
+          setCompetition(data.competition);
+          setLastUpdated(data.competition.updated_at);
+        }
+      } catch {
+        // Live polling is an enhancement; the server rendered page still works.
+      }
+    }
+
+    const timer = window.setInterval(poll, 7000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [competition.slug]);
+
+  const standings = useMemo(() => totalStandings(competition.config), [competition.config]);
+  const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
+  const showCountdown = nextCountdown != null && nextCountdown > 0;
+  const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+
+  return (
+    <main className="space-y-5">
+      <section className="relative -mx-4 -mt-6 overflow-hidden bg-black/35 md:mx-0 md:mt-0 md:rounded-[28px] md:border md:border-white/10">
+        <div className="h-[330px] md:h-[380px]">
+          {competition.header_image_url || competition.card_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={competition.header_image_url ?? competition.card_image_url ?? ""}
+              alt={competition.name}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-white/45">Headerbild saknas</div>
+          )}
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-[#070b14]/45 to-black/10" />
+        <div className="absolute inset-x-0 bottom-0 p-5 md:p-7">
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full border px-3 py-1 text-xs ${statusClass(competition.status)}`}>
+              {statusLabel(competition.status)}
+            </span>
+            {showCountdown ? (
+              <span className="rounded-full border border-amber-300/30 bg-amber-300/15 px-3 py-1 text-xs text-amber-100">
+                {nextCountdown} dagar kvar
+              </span>
+            ) : null}
+          </div>
+          <h1 className="mt-3 text-4xl font-semibold tracking-tight md:text-5xl">{competition.name}</h1>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-white/72">
+            <span>{formatDateRange(competition.starts_on, competition.ends_on)}</span>
+            {competition.location ? <span>{competition.location}</span> : null}
+          </div>
+          {competition.subtitle ? (
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72">{competition.subtitle}</p>
+          ) : null}
+        </div>
+      </section>
+
+      <div className="flex items-center justify-between gap-3 text-xs text-white/45">
+        <span>Liveuppdateras automatiskt</span>
+        <span>
+          Senast uppdaterad{" "}
+          {new Date(lastUpdated).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+
+      <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
+        {TABS.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setTab(item)}
+            className={[
+              "h-10 shrink-0 rounded-xl border px-4 text-sm font-medium transition",
+              tab === item
+                ? "border-white/25 bg-white/12 text-white"
+                : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
+            ].join(" ")}
+          >
+            {tabLabel(item)}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "overview" ? (
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Ledare</div>
+            <div className="mt-3 text-2xl font-semibold">{standings[0]?.competitor.name ?? "Ingen tabell ännu"}</div>
+            <div className="mt-1 text-sm text-white/58">
+              {standings[0] ? `${fmtPoints(standings[0].total)} poäng` : "Fylls när resultat matas in"}
+            </div>
+          </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Rundor</div>
+            <div className="mt-3 text-2xl font-semibold">{rounds.length}</div>
+            <div className="mt-1 text-sm text-white/58">Valfritt format per runda</div>
+          </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Deltagare</div>
+            <div className="mt-3 text-2xl font-semibold">{competition.config.players.length}</div>
+            <div className="mt-1 text-sm text-white/58">{competition.config.teams.length} lag</div>
+          </div>
+        </section>
+      ) : null}
+
+      {tab === "standings" ? (
+        <section className="overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04]">
+          <div className="grid grid-cols-[54px_minmax(0,1fr)_80px] border-b border-white/10 px-3 py-3 text-xs uppercase tracking-[0.16em] text-white/42 md:grid-cols-[70px_minmax(0,1fr)_repeat(var(--rounds),70px)_90px]">
+            <div>Pl</div>
+            <div>Lag/spelare</div>
+            <div className="text-right md:hidden">Total</div>
+            {rounds.map((round) => (
+              <div key={round.id} className="hidden text-right md:block">
+                R{round.sortOrder + 1}
+              </div>
+            ))}
+            <div className="hidden text-right md:block">Total</div>
+          </div>
+          <div className="divide-y divide-white/10">
+            {standings.map((row) => (
+              <div
+                key={row.competitor.id}
+                className="grid grid-cols-[54px_minmax(0,1fr)_80px] items-center px-3 py-3 md:grid-cols-[70px_minmax(0,1fr)_repeat(var(--rounds),70px)_90px]"
+                style={{ "--rounds": rounds.length } as CSSProperties}
+              >
+                <div className="font-semibold tabular-nums text-white/86">
+                  {row.placement ?? "-"}
+                  {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
+                </div>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{row.competitor.name}</div>
+                    {row.competitor.memberNames.length > 1 ? (
+                      <div className="truncate text-xs text-white/48">{row.competitor.memberNames.join(", ")}</div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="text-right text-lg font-semibold tabular-nums">{fmtPoints(row.total)}</div>
+                {rounds.map((round) => (
+                  <div key={round.id} className="hidden text-right tabular-nums text-white/72 md:block">
+                    {fmtPoints(row.roundPoints[round.id] ?? 0)}
+                  </div>
+                ))}
+                <div className="hidden text-right text-lg font-semibold tabular-nums md:block">
+                  {fmtPoints(row.total)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {tab === "rounds" ? (
+        <section className="grid gap-4">
+          {rounds.map((round) => {
+            const rows = roundLeaderboard(competition.config, round);
+            return (
+              <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold">{round.name}</h2>
+                    <div className="mt-1 text-sm text-white/58">
+                      {formatLabel(round.format, round.customFormatName)} · {round.holes} hål ·{" "}
+                      {round.playMode === "team" ? "Lag" : "Individuellt"}
+                    </div>
+                  </div>
+                  {round.date ? <div className="text-sm text-white/58">{round.date}</div> : null}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {rows.slice(0, 6).map((row) => (
+                    <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                      <div className="min-w-0">
+                        <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
+                        <span className="font-medium">{row.competitor.name}</span>
+                      </div>
+                      <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {tab === "schedule" ? (
+        <section className="grid gap-4">
+          {rounds.map((round) => {
+            const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item.name]));
+            return (
+              <div key={round.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                <h2 className="text-xl font-semibold">{round.name}</h2>
+                <div className="mt-3 grid gap-2">
+                  {round.schedule.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{item.title || "Boll/match"}</div>
+                          <div className="mt-1 text-sm text-white/58">
+                            {item.competitorIds.map((id) => competitors.get(id) ?? id).join(" · ")}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-sm text-white/70">{item.time}</div>
+                      </div>
+                      {item.note ? <div className="mt-2 text-sm text-white/55">{item.note}</div> : null}
+                    </div>
+                  ))}
+                  {round.schedule.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-white/52">
+                      Inget schema publicerat för rundan.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
+      {tab === "players" ? (
+        <section className="grid gap-4 md:grid-cols-2">
+          {competition.config.teams.length > 0
+            ? competition.config.teams.map((team) => {
+                const members = team.memberIds
+                  .map((id) => competition.config.players.find((player) => player.id === id))
+                  .filter(Boolean);
+                return (
+                  <div key={team.id} className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                    <h2 className="text-xl font-semibold">
+                      {team.name || members.map((member) => member?.name).join(" & ") || "Lag"}
+                    </h2>
+                    <div className="mt-3 grid gap-2">
+                      {members.map((member) =>
+                        member ? (
+                          <div key={member.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                            <Avatar src={member.avatarUrl} name={member.name} />
+                            <span className="font-medium">{member.name}</span>
+                          </div>
+                        ) : null
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            : competition.config.players.map((player) => (
+                <div key={player.id} className="flex items-center gap-3 rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                  <Avatar src={player.avatarUrl} name={player.name} />
+                  <div>
+                    <div className="font-semibold">{player.name}</div>
+                    <div className="text-xs text-white/50">
+                      {player.sourceLabel === "postnord" ? "Importerad snapshot" : "Extern spelare"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+        </section>
+      ) : null}
+
+      {tab === "rules" ? (
+        <section className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5">
+          <div className="prose prose-invert max-w-none whitespace-pre-wrap text-sm leading-7 text-white/76">
+            {competition.rules_content || "Inga stadgar är publicerade ännu."}
+          </div>
+        </section>
+      ) : null}
+    </main>
+  );
+}

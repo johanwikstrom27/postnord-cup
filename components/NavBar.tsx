@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/wheel", label: "SpinThePostbil" },
   { href: "/stadgar", label: "Stadgar" },
   { href: "/history", label: "Historik" },
+  { href: "/other-competitions", label: "Andra tävlingar" },
 ];
 
 const SEASON_AWARE_LINKS = new Set(["/", "/overview", "/leaderboard", "/events", "/players", "/wheel", "/stadgar"]);

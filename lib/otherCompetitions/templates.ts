@@ -56,6 +56,7 @@ export function createRound(format: OtherCompetitionFormat, order: number): Othe
     playMode: option.defaultMode,
     ballsCount: 0,
     scoringModel: defaultScoringModel(option.scoringKind),
+    parts: [],
     schedule: [],
     sortOrder: order,
   };

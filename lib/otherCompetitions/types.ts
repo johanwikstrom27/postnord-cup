@@ -56,6 +56,14 @@ export type OtherCompetitionScheduleItem = {
   note: string;
 };
 
+export type OtherCompetitionRoundPart = {
+  id: string;
+  name: string;
+  holes: number;
+  scoringModel: OtherCompetitionScoringModel;
+  sortOrder: number;
+};
+
 export type OtherCompetitionRound = {
   id: string;
   name: string;
@@ -66,6 +74,7 @@ export type OtherCompetitionRound = {
   playMode: OtherCompetitionPlayMode;
   ballsCount: number;
   scoringModel: OtherCompetitionScoringModel;
+  parts?: OtherCompetitionRoundPart[];
   schedule: OtherCompetitionScheduleItem[];
   sortOrder: number;
 };

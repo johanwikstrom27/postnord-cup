@@ -3,6 +3,7 @@ import type {
   OtherCompetitionPlayer,
   OtherCompetitionResult,
   OtherCompetitionRound,
+  OtherCompetitionRoundPart,
   OtherCompetitionTeam,
 } from "@/lib/otherCompetitions/types";
 
@@ -33,6 +34,15 @@ export type StandingEntry = {
   total: number;
   placement: number | null;
   overridden: boolean;
+};
+
+export type ScoringUnit = {
+  id: string;
+  resultKey: string;
+  label: string;
+  holes: number;
+  round: OtherCompetitionRound;
+  part: OtherCompetitionRoundPart | null;
 };
 
 function bySortOrder<T extends { sortOrder: number }>(rows: T[]) {
@@ -140,6 +150,47 @@ export function resultTotal(result: OtherCompetitionResult | undefined, round?: 
   return raw;
 }
 
+export function scoringUnitsForRound(round: OtherCompetitionRound): ScoringUnit[] {
+  const parts = (round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  if (parts.length === 0) {
+    return [
+      {
+        id: round.id,
+        resultKey: round.id,
+        label: round.name,
+        holes: round.holes,
+        round,
+        part: null,
+      },
+    ];
+  }
+
+  return parts.map((part) => ({
+    id: part.id,
+    resultKey: `${round.id}:${part.id}`,
+    label: part.name,
+    holes: part.holes,
+    round,
+    part,
+  }));
+}
+
+export function scoringModelForUnit(unit: ScoringUnit) {
+  return unit.part?.scoringModel ?? unit.round.scoringModel;
+}
+
+export function allScoringUnits(config: OtherCompetitionConfig) {
+  return config.rounds.flatMap(scoringUnitsForRound);
+}
+
+function resultTotalForUnit(result: OtherCompetitionResult | undefined, unit: ScoringUnit) {
+  if (!result) return 0;
+  const raw = Number(result.points || 0) + Number(result.adjustment || 0) + Number(result.bonus || 0);
+  const max = scoringModelForUnit(unit).maxPoints;
+  if (typeof max === "number" && Number.isFinite(max)) return Math.min(raw, max);
+  return raw;
+}
+
 export function rankEntries(
   entries: Array<{
     competitor: Competitor;
@@ -199,14 +250,22 @@ export function rankEntries(
 
 export function roundLeaderboard(config: OtherCompetitionConfig, round: OtherCompetitionRound): RankedEntry[] {
   const competitors = competitorsForRound(config, round);
-  const results = new Map((config.results[round.id] ?? []).map((result) => [result.competitorId, result]));
+  const units = scoringUnitsForRound(round);
+  const resultsByUnit = units.map((unit) => ({
+    unit,
+    results: new Map((config.results[unit.resultKey] ?? []).map((result) => [result.competitorId, result])),
+  }));
 
   return rankEntries(
     competitors.map((competitor) => {
-      const result = results.get(competitor.id);
+      const points = resultsByUnit.reduce((sum, row) => {
+        const result = row.results.get(competitor.id);
+        return sum + resultTotalForUnit(result, row.unit);
+      }, 0);
+      const result = resultsByUnit.map((row) => row.results.get(competitor.id)).find(Boolean);
       return {
         competitor,
-        points: resultTotal(result, round),
+        points,
         result,
       };
     })
@@ -219,28 +278,29 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
     const roundPoints: Record<string, number> = {};
     let total = 0;
 
-    for (const round of config.rounds) {
-      const results = config.results[round.id] ?? [];
+    for (const unit of allScoringUnits(config)) {
+      const round = unit.round;
+      const results = config.results[unit.resultKey] ?? [];
       let points = 0;
 
       if (competitor.type === "team") {
         if (round.playMode === "team") {
-          points = resultTotal(results.find((row) => row.competitorId === competitor.id), round);
+          points = resultTotalForUnit(results.find((row) => row.competitorId === competitor.id), unit);
         } else {
           const team = config.teams.find((row) => row.id === competitor.id);
           points = (team?.memberIds ?? []).reduce((sum, playerId) => {
             const result = results.find((row) => row.competitorId === playerId);
-            return sum + resultTotal(result, round);
+            return sum + resultTotalForUnit(result, unit);
           }, 0);
         }
       } else if (round.playMode === "team") {
         const team = teamByPlayerId(config, competitor.id);
-        points = resultTotal(results.find((row) => row.competitorId === team?.id), round);
+        points = resultTotalForUnit(results.find((row) => row.competitorId === team?.id), unit);
       } else {
-        points = resultTotal(results.find((row) => row.competitorId === competitor.id), round);
+        points = resultTotalForUnit(results.find((row) => row.competitorId === competitor.id), unit);
       }
 
-      roundPoints[round.id] = points;
+      roundPoints[unit.resultKey] = points;
       total += points;
     }
 

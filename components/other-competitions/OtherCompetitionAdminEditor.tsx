@@ -16,9 +16,11 @@ import { normalizeConfig, normalizeSlug, statusLabel } from "@/lib/otherCompetit
 import { FORMAT_OPTIONS, createRound, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
+  allScoringUnits,
   competitorsForRound,
-  resultTotal,
   roundLeaderboard,
+  scoringModelForUnit,
+  scoringUnitsForRound,
   teamDisplayName,
   totalStandings,
 } from "@/lib/otherCompetitions/scoring";
@@ -176,6 +178,7 @@ export default function OtherCompetitionAdminEditor({
   const [tab, setTab] = useState<Tab>("basic");
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [selectedRoundId, setSelectedRoundId] = useState(initialCompetition.config.rounds[0]?.id ?? "");
+  const [selectedResultKey, setSelectedResultKey] = useState(initialCompetition.config.rounds[0]?.id ?? "");
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [saveMessage, setSaveMessage] = useState("");
   const dirtyRef = useRef(false);
@@ -183,6 +186,10 @@ export default function OtherCompetitionAdminEditor({
 
   const rounds = useMemo(() => sortedRounds(config.rounds), [config.rounds]);
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? rounds[0] ?? null;
+  const scoringUnits = useMemo(() => allScoringUnits(config), [config]);
+  const selectedScoringUnit =
+    scoringUnits.find((unit) => unit.resultKey === selectedResultKey) ??
+    (selectedRound ? scoringUnitsForRound(selectedRound)[0] : null);
   const standings = useMemo(() => totalStandings(config), [config]);
 
   function markDirty() {
@@ -424,6 +431,7 @@ export default function OtherCompetitionAdminEditor({
       results: { ...prev.results, [round.id]: [] },
     }));
     setSelectedRoundId(round.id);
+    setSelectedResultKey(round.id);
   }
 
   function patchRound(roundId: string, patch: Partial<OtherCompetitionRound>) {
@@ -438,6 +446,10 @@ export default function OtherCompetitionAdminEditor({
     patchConfig((prev) => {
       const nextResults = { ...prev.results };
       delete nextResults[roundId];
+      const round = prev.rounds.find((item) => item.id === roundId);
+      for (const part of round?.parts ?? []) {
+        delete nextResults[`${roundId}:${part.id}`];
+      }
       return {
         ...prev,
         rounds: prev.rounds.filter((round) => round.id !== roundId),
@@ -445,11 +457,70 @@ export default function OtherCompetitionAdminEditor({
       };
     });
     setSelectedRoundId("");
+    setSelectedResultKey("");
   }
 
-  function ensureRoundResults(round: OtherCompetitionRound) {
-    const competitors = competitorsForRound(config, round);
-    const existing = new Map((config.results[round.id] ?? []).map((result) => [result.competitorId, result]));
+  function splitRoundIntoNines(round: OtherCompetitionRound) {
+    if (locked) return;
+    const parts = [
+      {
+        id: crypto.randomUUID(),
+        name: "Hål 1-9",
+        holes: 9,
+        scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
+        sortOrder: 0,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "Hål 10-18",
+        holes: 9,
+        scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
+        sortOrder: 1,
+      },
+    ];
+
+    patchRound(round.id, { holes: 18, parts });
+    setSelectedResultKey(`${round.id}:${parts[0].id}`);
+  }
+
+  function addRoundPart(round: OtherCompetitionRound) {
+    if (locked) return;
+    const part = {
+      id: crypto.randomUUID(),
+      name: `Del ${(round.parts ?? []).length + 1}`,
+      holes: 9,
+      scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
+      sortOrder: (round.parts ?? []).length,
+    };
+    patchRound(round.id, { parts: [...(round.parts ?? []), part] });
+    setSelectedResultKey(`${round.id}:${part.id}`);
+  }
+
+  function patchRoundPart(round: OtherCompetitionRound, partId: string, patch: Partial<NonNullable<OtherCompetitionRound["parts"]>[number]>) {
+    patchRound(round.id, {
+      parts: (round.parts ?? []).map((part) => (part.id === partId ? { ...part, ...patch } : part)),
+    });
+  }
+
+  function removeRoundPart(round: OtherCompetitionRound, partId: string) {
+    if (locked) return;
+    patchConfig((prev) => {
+      const nextResults = { ...prev.results };
+      delete nextResults[`${round.id}:${partId}`];
+      return {
+        ...prev,
+        rounds: prev.rounds.map((item) =>
+          item.id === round.id ? { ...item, parts: (item.parts ?? []).filter((part) => part.id !== partId) } : item
+        ),
+        results: nextResults,
+      };
+    });
+    if (selectedResultKey === `${round.id}:${partId}`) setSelectedResultKey(round.id);
+  }
+
+  function ensureUnitResults(unit: NonNullable<typeof selectedScoringUnit>) {
+    const competitors = competitorsForRound(config, unit.round);
+    const existing = new Map((config.results[unit.resultKey] ?? []).map((result) => [result.competitorId, result]));
     return competitors.map((competitor) => existing.get(competitor.id) ?? createResult(competitor.id));
   }
 
@@ -460,20 +531,31 @@ export default function OtherCompetitionAdminEditor({
     }));
   }
 
-  function patchResult(round: OtherCompetitionRound, competitorId: string, patch: Partial<OtherCompetitionResult>) {
-    const results = ensureRoundResults(round).map((result) =>
+  function patchUnitResult(unit: NonNullable<typeof selectedScoringUnit>, competitorId: string, patch: Partial<OtherCompetitionResult>) {
+    const results = ensureUnitResults(unit).map((result) =>
       result.competitorId === competitorId ? { ...result, ...patch } : result
     );
-    patchRoundResults(round.id, results);
+    patchRoundResults(unit.resultKey, results);
   }
 
-  function applyPlacementPoints(round: OtherCompetitionRound) {
-    const results = ensureRoundResults(round);
-    const ranked = roundLeaderboard({ ...config, results: { ...config.results, [round.id]: results } }, round);
-    const distribution = round.scoringModel.placementPoints;
+  function unitResultTotal(result: OtherCompetitionResult | undefined, unit: NonNullable<typeof selectedScoringUnit>) {
+    if (!result) return 0;
+    const raw = Number(result.points || 0) + Number(result.adjustment || 0) + Number(result.bonus || 0);
+    const max = scoringModelForUnit(unit).maxPoints;
+    if (typeof max === "number" && Number.isFinite(max)) return Math.min(raw, max);
+    return raw;
+  }
+
+  function applyPlacementPointsForUnit(unit: NonNullable<typeof selectedScoringUnit>) {
+    const results = ensureUnitResults(unit);
+    const ranked = roundLeaderboard(
+      { ...config, results: { ...config.results, [unit.resultKey]: results } },
+      unit.round
+    );
+    const distribution = scoringModelForUnit(unit).placementPoints;
     const byId = new Map(ranked.map((row) => [row.competitor.id, distribution[(row.placement ?? 0) - 1] ?? 0]));
     patchRoundResults(
-      round.id,
+      unit.resultKey,
       results.map((result) => ({ ...result, points: byId.get(result.competitorId) ?? result.points }))
     );
   }
@@ -923,7 +1005,55 @@ export default function OtherCompetitionAdminEditor({
             </div>
           ) : null}
 
-          {rounds.map((round) => {
+          {rounds.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {rounds.map((round) => {
+                const parts = round.parts ?? [];
+                const active = selectedRound?.id === round.id;
+                return (
+                  <button
+                    key={round.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRoundId(round.id);
+                      setSelectedResultKey(scoringUnitsForRound(round)[0]?.resultKey ?? round.id);
+                    }}
+                    className={[
+                      "rounded-[22px] border p-4 text-left transition",
+                      active
+                        ? "border-sky-300/35 bg-sky-400/12"
+                        : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-lg font-semibold">{round.name}</div>
+                        <div className="mt-1 text-sm text-white/58">
+                          {formatLabel(round.format, round.customFormatName)}
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs text-white/65">
+                        {parts.length > 0 ? `${parts.length} delar` : `${round.holes} hål`}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-white/58">
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-2 py-2">
+                        {round.playMode === "team" ? "Lag" : "Ind"}
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-2 py-2">
+                        {round.schedule.length} schema
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-2 py-2">
+                        {round.date || "Datum"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {(selectedRound ? [selectedRound] : []).map((round) => {
             const competitors = competitorsForRound(config, round);
             return (
               <div key={round.id} className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
@@ -991,8 +1121,94 @@ export default function OtherCompetitionAdminEditor({
                   </div>
                 </div>
 
+                <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.22em] text-white/45">2. Delar inom rundan</div>
+                      <div className="mt-1 text-sm text-white/55">
+                        Dela en 18-hålsrunda i flera poängdelar, till exempel två separata 9-hålstävlingar.
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <button type="button" disabled={locked} onClick={() => splitRoundIntoNines(round)} className={buttonClass("primary")}>
+                        Dela 18 i 2 x 9
+                      </button>
+                      <button type="button" disabled={locked} onClick={() => addRoundPart(round)} className={buttonClass()}>
+                        Lägg till del
+                      </button>
+                    </div>
+                  </div>
+
+                  {(round.parts ?? []).length === 0 ? (
+                    <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-4 py-5 text-center text-sm text-white/52">
+                      Inga delar skapade. Resultat matas då in för hela rundan.
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid gap-3">
+                      {(round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder).map((part) => (
+                        <div key={part.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_110px_170px_160px_auto]">
+                            <input
+                              disabled={locked}
+                              value={part.name}
+                              onChange={(e) => patchRoundPart(round, part.id, { name: e.target.value })}
+                              className={inputClass(locked)}
+                            />
+                            <input
+                              disabled={locked}
+                              type="number"
+                              min={1}
+                              value={part.holes}
+                              onChange={(e) => patchRoundPart(round, part.id, { holes: Number(e.target.value) || 9 })}
+                              className={inputClass(locked)}
+                            />
+                            <select
+                              disabled={locked}
+                              value={part.scoringModel.kind}
+                              onChange={(e) =>
+                                patchRoundPart(round, part.id, {
+                                  scoringModel: {
+                                    ...part.scoringModel,
+                                    kind: e.target.value as OtherCompetitionRound["scoringModel"]["kind"],
+                                  },
+                                })
+                              }
+                              className={inputClass(locked)}
+                            >
+                              <option value="placement">Placeringspoäng</option>
+                              <option value="match">Matchpoäng</option>
+                              <option value="manual">Manuell poäng</option>
+                              <option value="custom">Custom</option>
+                            </select>
+                            <input
+                              disabled={locked}
+                              value={part.scoringModel.placementPoints.join("-")}
+                              onChange={(e) =>
+                                patchRoundPart(round, part.id, {
+                                  scoringModel: {
+                                    ...part.scoringModel,
+                                    placementPoints: e.target.value
+                                      .split(/[-,;\s]+/)
+                                      .map((value) => Number(value.replace(",", ".")))
+                                      .filter((value) => Number.isFinite(value)),
+                                  },
+                                })
+                              }
+                              placeholder="6-5-4-3"
+                              className={inputClass(locked)}
+                            />
+                            <button type="button" disabled={locked} onClick={() => removeRoundPart(round, part.id)} className={buttonClass("danger")}>
+                              Ta bort
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-4 rounded-[20px] border border-sky-300/15 bg-sky-400/10 p-4">
-                  <div className="text-xs uppercase tracking-[0.22em] text-sky-100/70">2. Poängsättning och regler för denna speldag</div>
+                  <div className="text-xs uppercase tracking-[0.22em] text-sky-100/70">3. Poängsättning och regler för hela rundan</div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="space-y-2">
                       <span className="text-xs uppercase tracking-[0.18em] text-white/45">Poängmodell</span>
@@ -1103,7 +1319,7 @@ export default function OtherCompetitionAdminEditor({
                 <div className="mt-4 rounded-[20px] border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <div className="text-xs uppercase tracking-[0.22em] text-white/45">3. Spelschema</div>
+                      <div className="text-xs uppercase tracking-[0.22em] text-white/45">4. Spelschema</div>
                       <div className="mt-1 text-sm text-white/55">Bygg bollar, matcher eller vilande lag för denna speldag.</div>
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
@@ -1173,29 +1389,48 @@ export default function OtherCompetitionAdminEditor({
       {tab === "results" ? (
         <section className="space-y-4">
           <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
-            <select value={selectedRound?.id ?? ""} onChange={(e) => setSelectedRoundId(e.target.value)} className={inputClass(false)}>
-              {rounds.map((round) => (
-                <option key={round.id} value={round.id}>
-                  {round.name}
+            <select
+              value={selectedScoringUnit?.resultKey ?? ""}
+              onChange={(e) => {
+                const unit = scoringUnits.find((item) => item.resultKey === e.target.value);
+                setSelectedResultKey(e.target.value);
+                if (unit) setSelectedRoundId(unit.round.id);
+              }}
+              className={inputClass(false)}
+            >
+              {scoringUnits.map((unit) => (
+                <option key={unit.resultKey} value={unit.resultKey}>
+                  {unit.part ? `${unit.round.name} - ${unit.label}` : unit.round.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {selectedRound ? (
+          {selectedScoringUnit ? (
             <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold">{selectedRound.name}</h2>
-                  <div className="text-sm text-white/55">{formatLabel(selectedRound.format, selectedRound.customFormatName)}</div>
+                  <h2 className="text-xl font-semibold">
+                    {selectedScoringUnit.part
+                      ? `${selectedScoringUnit.round.name} - ${selectedScoringUnit.label}`
+                      : selectedScoringUnit.round.name}
+                  </h2>
+                  <div className="text-sm text-white/55">
+                    {formatLabel(selectedScoringUnit.round.format, selectedScoringUnit.round.customFormatName)} ·{" "}
+                    {selectedScoringUnit.holes} hål · {scoringModelForUnit(selectedScoringUnit).kind}
+                  </div>
                 </div>
-                <button type="button" disabled={locked} onClick={() => applyPlacementPoints(selectedRound)} className={buttonClass("primary")}>
+                <button type="button" disabled={locked} onClick={() => applyPlacementPointsForUnit(selectedScoringUnit)} className={buttonClass("primary")}>
                   Räkna placeringspoäng
                 </button>
               </div>
+              <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
+                Resultat sparas för vald del. Om rundan är uppdelad i två 9-hålsdelar matar du alltså in resultat
+                separat för Hål 1-9 och Hål 10-18; totalställningen summerar delarna automatiskt.
+              </div>
               <div className="mt-4 grid gap-3">
-                {competitorsForRound(config, selectedRound).map((competitor) => {
-                  const result = ensureRoundResults(selectedRound).find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
+                {competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
+                  const result = ensureUnitResults(selectedScoringUnit).find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
                   return (
                     <div key={competitor.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1203,35 +1438,35 @@ export default function OtherCompetitionAdminEditor({
                         {competitor.type === "player" && competitor.teamName ? <TeamPill competitor={competitor} /> : null}
                       </div>
                       <div className="mt-3 grid gap-3 md:grid-cols-4">
-                        <input disabled={locked} value={result.scoreLabel} onChange={(e) => patchResult(selectedRound, competitor.id, { scoreLabel: e.target.value })} placeholder="Resultattext" className={inputClass(locked)} />
+                        <input disabled={locked} value={result.scoreLabel} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })} placeholder="Resultattext" className={inputClass(locked)} />
                         <input
                           disabled={locked}
                           type="number"
                           value={result.rawScore ?? ""}
-                          onChange={(e) => patchResult(selectedRound, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
+                          onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
                           placeholder="Sorteringsscore"
                           className={inputClass(locked)}
                         />
-                        <input disabled={locked} type="number" value={result.points} onChange={(e) => patchResult(selectedRound, competitor.id, { points: Number(e.target.value) || 0 })} placeholder="Poäng" className={inputClass(locked)} />
-                        <input disabled={locked} type="number" value={result.adjustment} onChange={(e) => patchResult(selectedRound, competitor.id, { adjustment: Number(e.target.value) || 0 })} placeholder="Justering" className={inputClass(locked)} />
-                        <input disabled={locked} type="number" value={result.bonus} onChange={(e) => patchResult(selectedRound, competitor.id, { bonus: Number(e.target.value) || 0 })} placeholder="Bonus" className={inputClass(locked)} />
+                        <input disabled={locked} type="number" value={result.points} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { points: Number(e.target.value) || 0 })} placeholder="Poäng" className={inputClass(locked)} />
+                        <input disabled={locked} type="number" value={result.adjustment} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { adjustment: Number(e.target.value) || 0 })} placeholder="Justering" className={inputClass(locked)} />
+                        <input disabled={locked} type="number" value={result.bonus} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { bonus: Number(e.target.value) || 0 })} placeholder="Bonus" className={inputClass(locked)} />
                         <input
                           disabled={locked}
                           type="number"
                           value={result.placementOverride ?? ""}
-                          onChange={(e) => patchResult(selectedRound, competitor.id, { placementOverride: e.target.value === "" ? null : Number(e.target.value) })}
+                          onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { placementOverride: e.target.value === "" ? null : Number(e.target.value) })}
                           placeholder="Placering override"
                           className={inputClass(locked)}
                         />
                         <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3">
-                          <input disabled={locked} type="checkbox" checked={result.winnerOverride} onChange={(e) => patchResult(selectedRound, competitor.id, { winnerOverride: e.target.checked })} />
+                          <input disabled={locked} type="checkbox" checked={result.winnerOverride} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { winnerOverride: e.target.checked })} />
                           <span className="text-sm">Vinnaroverride</span>
                         </label>
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
-                          Summa {resultTotal(result, selectedRound)}
+                          Summa {unitResultTotal(result, selectedScoringUnit)}
                         </div>
                       </div>
-                      <textarea disabled={locked} value={result.note} onChange={(e) => patchResult(selectedRound, competitor.id, { note: e.target.value })} placeholder="Anteckning, särspel eller domslut" className={`${inputClass(locked)} mt-3 min-h-20`} />
+                      <textarea disabled={locked} value={result.note} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { note: e.target.value })} placeholder="Anteckning, särspel eller domslut" className={`${inputClass(locked)} mt-3 min-h-20`} />
                     </div>
                   );
                 })}

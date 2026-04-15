@@ -7,6 +7,7 @@ import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions
 import { formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
+  allScoringUnits,
   competitorsForRound,
   roundLeaderboard,
   teamDisplayName,
@@ -100,6 +101,7 @@ export default function OtherCompetitionPublicClient({
   const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
   const showCountdown = nextCountdown != null && nextCountdown > 0;
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  const scoringUnits = allScoringUnits(competition.config);
 
   return (
     <main className="space-y-5">
@@ -185,9 +187,9 @@ export default function OtherCompetitionPublicClient({
             <div>Pl</div>
             <div>Lag/spelare</div>
             <div className="text-right md:hidden">Total</div>
-            {rounds.map((round) => (
-              <div key={round.id} className="hidden text-right md:block">
-                R{round.sortOrder + 1}
+            {scoringUnits.map((unit, index) => (
+              <div key={unit.resultKey} className="hidden text-right md:block">
+                {unit.part ? `${unit.round.sortOrder + 1}${String.fromCharCode(97 + unit.part.sortOrder)}` : `R${index + 1}`}
               </div>
             ))}
             <div className="hidden text-right md:block">Total</div>
@@ -197,7 +199,7 @@ export default function OtherCompetitionPublicClient({
               <div
                 key={row.competitor.id}
                 className="grid grid-cols-[54px_minmax(0,1fr)_80px] items-center px-3 py-3 md:grid-cols-[70px_minmax(0,1fr)_repeat(var(--rounds),70px)_90px]"
-                style={{ "--rounds": rounds.length } as CSSProperties}
+                style={{ "--rounds": scoringUnits.length } as CSSProperties}
               >
                 <div className="font-semibold tabular-nums text-white/86">
                   {row.placement ?? "-"}
@@ -231,9 +233,9 @@ export default function OtherCompetitionPublicClient({
                   </div>
                 </div>
                 <div className="text-right text-lg font-semibold tabular-nums">{fmtPoints(row.total)}</div>
-                {rounds.map((round) => (
-                  <div key={round.id} className="hidden text-right tabular-nums text-white/72 md:block">
-                    {fmtPoints(row.roundPoints[round.id] ?? 0)}
+                {scoringUnits.map((unit) => (
+                  <div key={unit.resultKey} className="hidden text-right tabular-nums text-white/72 md:block">
+                    {fmtPoints(row.roundPoints[unit.resultKey] ?? 0)}
                   </div>
                 ))}
                 <div className="hidden text-right text-lg font-semibold tabular-nums md:block">

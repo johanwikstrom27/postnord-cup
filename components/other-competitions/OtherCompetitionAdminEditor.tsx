@@ -8,6 +8,7 @@ import type {
   OtherCompetitionRow,
   OtherCompetitionRound,
   OtherCompetitionScheduleItem,
+  OtherCompetitionSchedulePairing,
   OtherCompetitionStatus,
   OtherCompetitionTeam,
   PostNordPersonSnapshot,
@@ -100,6 +101,22 @@ function resultScoreLabel(round: OtherCompetitionRound, format = round.format) {
   if (format === "stroke_play") return "Slag totalt";
   if (round.scoringModel.kind === "match") return "Matchresultat";
   return "Resultat i spelet";
+}
+
+function firstName(name: string) {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+function usesPlayerBallScores(format: OtherCompetitionRound["format"]) {
+  return ["stableford", "stroke_play", "eclectic"].includes(format);
+}
+
+function unitFormat(unit: { round: OtherCompetitionRound; part: NonNullable<OtherCompetitionRound["parts"]>[number] | null }) {
+  return unit.part?.format ?? unit.round.format;
+}
+
+function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
+  return segment === "front_9" ? "Första 9" : "Bakre 9";
 }
 
 function partFormatLabel(part: NonNullable<OtherCompetitionRound["parts"]>[number], round: OtherCompetitionRound) {
@@ -299,6 +316,10 @@ function fmtTime(iso: string | null) {
   });
 }
 
+function fmtPoints(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(".", ",");
+}
+
 function toDraft(row: OtherCompetitionRow): DraftCompetition {
   return {
     name: row.name,
@@ -319,6 +340,7 @@ function createResult(competitorId: string): OtherCompetitionResult {
     competitorId,
     scoreLabel: "",
     rawScore: null,
+    playerScores: {},
     points: 0,
     adjustment: 0,
     bonus: 0,
@@ -566,6 +588,13 @@ export default function OtherCompetitionAdminEditor({
     return teams.find((team) => team.memberIds.includes(playerId)) ?? null;
   }
 
+  function teamMembers(teamId: string) {
+    const team = config.teams.find((item) => item.id === teamId);
+    return (team?.memberIds ?? [])
+      .map((id) => config.players.find((player) => player.id === id))
+      .filter((player): player is OtherCompetitionPlayer => Boolean(player));
+  }
+
   function movePlayerToTeam(playerId: string, targetTeamId: string) {
     if (locked) return;
     patchConfig((prev) => ({
@@ -711,47 +740,80 @@ export default function OtherCompetitionAdminEditor({
     }));
   }
 
+  function rankingScore(result: OtherCompetitionResult) {
+    if (typeof result.rawScore === "number" && Number.isFinite(result.rawScore)) return result.rawScore;
+    const values = Object.values(result.playerScores ?? {}).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (values.length === 0) return null;
+    return values.reduce((sum, value) => sum + value, 0);
+  }
+
+  function applyPlacementPointsToResults(unit: NonNullable<typeof selectedScoringUnit>, results: OtherCompetitionResult[]) {
+    if (scoringModelForUnit(unit).kind !== "placement") return results;
+
+    const competitors = new Map(competitorsForRound(config, unit.round).map((competitor) => [competitor.id, competitor]));
+    const ranked = rankEntries(
+      results
+        .map((result) => ({ result, score: rankingScore(result) }))
+        .filter((row): row is { result: OtherCompetitionResult; score: number } => row.score !== null)
+        .map(({ result, score }) => ({
+          competitor: competitors.get(result.competitorId) ?? {
+            id: result.competitorId,
+            type: "player" as const,
+            name: result.competitorId,
+            avatarUrl: null,
+            memberNames: [],
+            teamId: null,
+            teamName: null,
+            teamColor: null,
+            teamIcon: null,
+          },
+          points: score,
+          result,
+        }))
+    );
+    const distribution = scoringModelForUnit(unit).placementPoints;
+    const byId = new Map(ranked.map((row) => [row.competitor.id, distribution[(row.placement ?? 0) - 1] ?? 0]));
+
+    return results.map((result) => ({
+      ...result,
+      points: byId.get(result.competitorId) ?? 0,
+      adjustment: 0,
+      bonus: 0,
+    }));
+  }
+
   function patchUnitResult(unit: NonNullable<typeof selectedScoringUnit>, competitorId: string, patch: Partial<OtherCompetitionResult>) {
     const results = ensureUnitResults(unit).map((result) =>
       result.competitorId === competitorId ? { ...result, ...patch } : result
     );
-    patchRoundResults(unit.resultKey, results);
+    patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
   }
 
-  function unitResultTotal(result: OtherCompetitionResult | undefined, unit: NonNullable<typeof selectedScoringUnit>) {
-    if (!result) return 0;
-    const raw = Number(result.points || 0) + Number(result.adjustment || 0) + Number(result.bonus || 0);
-    const max = scoringModelForUnit(unit).maxPoints;
-    if (typeof max === "number" && Number.isFinite(max)) return Math.min(raw, max);
-    return raw;
-  }
-
-  function applyPlacementPointsForUnit(unit: NonNullable<typeof selectedScoringUnit>) {
-    const results = ensureUnitResults(unit);
-    const competitors = new Map(competitorsForRound(config, unit.round).map((competitor) => [competitor.id, competitor]));
-    const ranked = rankEntries(
-      results.map((result) => ({
-        competitor: competitors.get(result.competitorId) ?? {
-          id: result.competitorId,
-          type: "player" as const,
-          name: result.competitorId,
-          avatarUrl: null,
-          memberNames: [],
-          teamId: null,
-          teamName: null,
-          teamColor: null,
-          teamIcon: null,
-        },
-        points: Number(result.rawScore ?? 0),
-        result,
-      }))
-    );
-    const distribution = scoringModelForUnit(unit).placementPoints;
-    const byId = new Map(ranked.map((row) => [row.competitor.id, distribution[(row.placement ?? 0) - 1] ?? 0]));
-    patchRoundResults(
-      unit.resultKey,
-      results.map((result) => ({ ...result, points: byId.get(result.competitorId) ?? result.points }))
-    );
+  function patchPlayerScore(unit: NonNullable<typeof selectedScoringUnit>, teamId: string, playerId: string, value: string) {
+    const numericValue = value === "" ? null : Number(value);
+    const members = teamMembers(teamId);
+    const results = ensureUnitResults(unit).map((result) => {
+      if (result.competitorId !== teamId) return result;
+      const playerScores = {
+        ...(result.playerScores ?? {}),
+        [playerId]: numericValue != null && Number.isFinite(numericValue) ? numericValue : null,
+      };
+      const entered = members
+        .map((member) => ({ member, value: playerScores[member.id] }))
+        .filter((row): row is { member: OtherCompetitionPlayer; value: number } => typeof row.value === "number" && Number.isFinite(row.value));
+      const total = entered.reduce((sum, row) => sum + row.value, 0);
+      const suffix = unitFormat(unit) === "stableford" ? "p" : "";
+      return {
+        ...result,
+        playerScores,
+        rawScore: entered.length > 0 ? total : null,
+        scoreLabel:
+          entered.length > 0
+            ? `${entered.map((row) => `${firstName(row.member.name)} ${row.value}${suffix}`).join(" + ")} = ${total}${suffix}`
+            : "",
+      };
+    });
+    patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
   }
 
   function addScheduleItem(round: OtherCompetitionRound) {
@@ -761,9 +823,45 @@ export default function OtherCompetitionAdminEditor({
       time: "",
       title: `${itemLabel} ${round.schedule.length + 1}`,
       competitorIds: [],
+      pairings: [],
       note: "",
     };
     patchRound(round.id, { schedule: [...round.schedule, item] });
+  }
+
+  function defaultSwitchPairings(playerIds: string[]) {
+    const pairings: OtherCompetitionSchedulePairing[] = [];
+    for (let index = 0; index < playerIds.length; index += 4) {
+      const group = playerIds.slice(index, index + 4);
+      if (group.length < 2) continue;
+      pairings.push({
+        id: crypto.randomUUID(),
+        segment: "front_9",
+        playerIds: group.slice(0, 2),
+        resultLabel: "",
+      });
+      if (group.length >= 4) {
+        pairings.push({
+          id: crypto.randomUUID(),
+          segment: "front_9",
+          playerIds: group.slice(2, 4),
+          resultLabel: "",
+        });
+        pairings.push({
+          id: crypto.randomUUID(),
+          segment: "back_9",
+          playerIds: [group[0], group[2]],
+          resultLabel: "",
+        });
+        pairings.push({
+          id: crypto.randomUUID(),
+          segment: "back_9",
+          playerIds: [group[1], group[3]],
+          resultLabel: "",
+        });
+      }
+    }
+    return pairings;
   }
 
   function generateSchedule(round: OtherCompetitionRound) {
@@ -780,6 +878,10 @@ export default function OtherCompetitionAdminEditor({
         time: "",
         title: `${itemLabel} ${schedule.length + 1}`,
         competitorIds: competitors.slice(i, i + perBall).map((competitor) => competitor.id),
+        pairings:
+          round.format === "switch_match_9"
+            ? defaultSwitchPairings(competitors.slice(i, i + perBall).map((competitor) => competitor.id))
+            : [],
         note: "",
       });
     }
@@ -790,6 +892,37 @@ export default function OtherCompetitionAdminEditor({
   function patchScheduleItem(round: OtherCompetitionRound, itemId: string, patch: Partial<OtherCompetitionScheduleItem>) {
     patchRound(round.id, {
       schedule: round.schedule.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+    });
+  }
+
+  function addSchedulePairing(round: OtherCompetitionRound, item: OtherCompetitionScheduleItem, segment: OtherCompetitionSchedulePairing["segment"]) {
+    patchScheduleItem(round, item.id, {
+      pairings: [
+        ...(item.pairings ?? []),
+        {
+          id: crypto.randomUUID(),
+          segment,
+          playerIds: item.competitorIds.slice(0, 2),
+          resultLabel: "",
+        },
+      ],
+    });
+  }
+
+  function patchSchedulePairing(
+    round: OtherCompetitionRound,
+    item: OtherCompetitionScheduleItem,
+    pairingId: string,
+    patch: Partial<OtherCompetitionSchedulePairing>
+  ) {
+    patchScheduleItem(round, item.id, {
+      pairings: (item.pairings ?? []).map((pairing) => (pairing.id === pairingId ? { ...pairing, ...patch } : pairing)),
+    });
+  }
+
+  function removeSchedulePairing(round: OtherCompetitionRound, item: OtherCompetitionScheduleItem, pairingId: string) {
+    patchScheduleItem(round, item.id, {
+      pairings: (item.pairings ?? []).filter((pairing) => pairing.id !== pairingId),
     });
   }
 
@@ -1484,6 +1617,73 @@ export default function OtherCompetitionAdminEditor({
                           </label>
                         ))}
                       </div>
+                      {round.format === "switch_match_9" ? (
+                        <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Parningar 9 + 9</div>
+                              <div className="mt-1 text-sm text-sky-100/65">
+                                Välj vilka två som möts första nio och vilka två som möts bakre nio.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={locked}
+                              onClick={() => patchScheduleItem(round, item.id, { pairings: defaultSwitchPairings(item.competitorIds) })}
+                              className={buttonClass("primary")}
+                            >
+                              Föreslå parningar
+                            </button>
+                          </div>
+                          {(["front_9", "back_9"] as const).map((segment) => (
+                            <div key={segment} className="mt-3 grid gap-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-semibold">{segmentLabel(segment)}</div>
+                                <button type="button" disabled={locked} onClick={() => addSchedulePairing(round, item, segment)} className={buttonClass()}>
+                                  Lägg till match
+                                </button>
+                              </div>
+                              {(item.pairings ?? []).filter((pairing) => pairing.segment === segment).map((pairing) => (
+                                <div key={pairing.id} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 md:grid-cols-[1fr_1fr_minmax(0,1fr)_auto]">
+                                  {[0, 1].map((playerIndex) => (
+                                    <select
+                                      key={playerIndex}
+                                      disabled={locked}
+                                      value={pairing.playerIds[playerIndex] ?? ""}
+                                      onChange={(e) => {
+                                        const playerIds = pairing.playerIds.slice();
+                                        playerIds[playerIndex] = e.target.value;
+                                        patchSchedulePairing(round, item, pairing.id, { playerIds });
+                                      }}
+                                      className={inputClass(locked)}
+                                    >
+                                      <option value="">Välj spelare</option>
+                                      {item.competitorIds.map((id) => {
+                                        const competitor = competitors.find((row) => row.id === id);
+                                        return (
+                                          <option key={id} value={id}>
+                                            {competitor?.name ?? id}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  ))}
+                                  <input
+                                    disabled={locked}
+                                    value={pairing.resultLabel}
+                                    onChange={(e) => patchSchedulePairing(round, item, pairing.id, { resultLabel: e.target.value })}
+                                    placeholder="Resultat, t.ex. Simon 2&1"
+                                    className={inputClass(locked)}
+                                  />
+                                  <button type="button" disabled={locked} onClick={() => removeSchedulePairing(round, item, pairing.id)} className={buttonClass("danger")}>
+                                    Ta bort
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <textarea disabled={locked} value={item.note} onChange={(e) => patchScheduleItem(round, item.id, { note: e.target.value })} placeholder="Notering" className={`${inputClass(locked)} mt-3 min-h-20`} />
                     </div>
                   ))}
@@ -1536,15 +1736,10 @@ export default function OtherCompetitionAdminEditor({
                     {selectedScoringUnit.holes} hål · {scoringKindLabel(scoringModelForUnit(selectedScoringUnit).kind)}
                   </div>
                 </div>
-                {scoringModelForUnit(selectedScoringUnit).kind === "placement" ? (
-                  <button type="button" disabled={locked} onClick={() => applyPlacementPointsForUnit(selectedScoringUnit)} className={buttonClass("primary")}>
-                    Räkna tabellpoäng
-                  </button>
-                ) : null}
               </div>
                 <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
                 {selectedScoringUnit.round.playMode === "team"
-                  ? `Denna runda rankar lag. Skriv lagets ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} och räkna sedan tabellpoäng efter placering.`
+                  ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
                 Uppdelade 9-hålsdelar matas in var för sig.
               </div>
@@ -1552,42 +1747,89 @@ export default function OtherCompetitionAdminEditor({
                 {competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
                   const result = ensureUnitResults(selectedScoringUnit).find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
                   const model = scoringModelForUnit(selectedScoringUnit);
+                  const format = unitFormat(selectedScoringUnit);
+                  const members = competitor.type === "team" ? teamMembers(competitor.id) : [];
+                  const usePlayerScores = model.kind === "placement" && competitor.type === "team" && usesPlayerBallScores(format);
                   return (
                     <div key={competitor.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="font-semibold">{competitor.name}</div>
                         {competitor.type === "player" && competitor.teamName ? <TeamPill competitor={competitor} /> : null}
                       </div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.2fr)_150px_140px_140px]">
-                        <label className="space-y-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultattext</span>
-                          <input
-                            disabled={locked}
-                            value={result.scoreLabel}
-                            onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
-                            placeholder={selectedScoringUnit.round.playMode === "team" ? "Johan 34 + Daniel 31 = 65" : "34 p"}
-                            className={inputClass(locked)}
-                          />
-                        </label>
-                        <label className="space-y-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format)}</span>
-                          <input
-                            disabled={locked}
-                            type="number"
-                            value={result.rawScore ?? ""}
-                            onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
-                            placeholder="65"
-                            className={inputClass(locked)}
-                          />
-                        </label>
-                        <label className="space-y-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">Tabellpoäng</span>
-                          <input disabled={locked} type="number" value={result.points} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { points: Number(e.target.value) || 0 })} placeholder="6" className={inputClass(locked)} />
-                        </label>
-                        <label className="space-y-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">Justering</span>
-                          <input disabled={locked} type="number" value={result.adjustment} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { adjustment: Number(e.target.value) || 0 })} placeholder="0" className={inputClass(locked)} />
-                        </label>
+                      {usePlayerScores ? (
+                        <div className="mt-3 grid gap-2">
+                          {members.map((member) => (
+                            <label key={member.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                              <span className="truncate text-sm font-medium">{firstName(member.name)}</span>
+                              <input
+                                disabled={locked}
+                                type="number"
+                                value={result.playerScores?.[member.id] ?? ""}
+                                onChange={(e) => patchPlayerScore(selectedScoringUnit, competitor.id, member.id, e.target.value)}
+                                placeholder="34"
+                                className="min-h-10 rounded-xl border border-white/10 bg-black/30 px-3 text-right text-sm outline-none focus:border-white/30"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : model.kind === "placement" ? (
+                        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
+                          <label className="space-y-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultattext</span>
+                            <input
+                              disabled={locked}
+                              value={result.scoreLabel}
+                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
+                              placeholder="34 p"
+                              className={inputClass(locked)}
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format)}</span>
+                            <input
+                              disabled={locked}
+                              type="number"
+                              value={result.rawScore ?? ""}
+                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
+                              placeholder="34"
+                              className={inputClass(locked)}
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
+                          <label className="space-y-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultat</span>
+                            <input
+                              disabled={locked}
+                              value={result.scoreLabel}
+                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
+                              placeholder="2&1, delad eller vinst"
+                              className={inputClass(locked)}
+                            />
+                          </label>
+                          <label className="space-y-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng till laget</span>
+                            <input
+                              disabled={locked}
+                              type="number"
+                              value={result.points}
+                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { points: Number(e.target.value) || 0 })}
+                              placeholder="2"
+                              className={inputClass(locked)}
+                            />
+                          </label>
+                        </div>
+                      )}
+                      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
+                          <span className="text-white/45">Resultat:</span>{" "}
+                          <span className="font-semibold text-white">{result.rawScore ?? "-"}</span>
+                          {result.scoreLabel ? <span className="ml-2 text-white/55">{result.scoreLabel}</span> : null}
+                        </div>
+                        <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
+                          Tabellpoäng <span className="font-semibold tabular-nums">{fmtPoints(result.points)}</span>
+                        </div>
                         <input
                           disabled={locked}
                           type="number"
@@ -1600,9 +1842,6 @@ export default function OtherCompetitionAdminEditor({
                           <input disabled={locked} type="checkbox" checked={result.winnerOverride} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { winnerOverride: e.target.checked })} />
                           <span className="text-sm">Vinnaroverride</span>
                         </label>
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
-                          {model.kind === "placement" ? "Summa tabellpoäng" : "Summa"} {unitResultTotal(result, selectedScoringUnit)}
-                        </div>
                       </div>
                       <textarea disabled={locked} value={result.note} onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { note: e.target.value })} placeholder="Anteckning, särspel eller domslut" className={`${inputClass(locked)} mt-3 min-h-20`} />
                     </div>

@@ -3,16 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import type {
+  OtherCompetitionConfig,
   OtherCompetitionPlayer,
   OtherCompetitionRound,
   OtherCompetitionRow,
+  OtherCompetitionSchedulePairing,
   OtherCompetitionScoringModel,
 } from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
 import { formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
-  allScoringUnits,
   competitorsForRound,
   roundLeaderboard,
   scoringModelForUnit,
@@ -46,6 +47,21 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
         <img src={src} alt={name} className="h-full w-full object-cover" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-white/50">
+          {name.slice(0, 1).toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniAvatar({ src, name }: { src: string | null; name: string }) {
+  return (
+    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[11px] text-white/58">
           {name.slice(0, 1).toUpperCase()}
         </div>
       )}
@@ -137,6 +153,52 @@ function roundFormatSummary(round: OtherCompetitionRound) {
   return formatLabel(round.format, round.customFormatName);
 }
 
+function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
+  return segment === "front_9" ? "Första 9" : "Bakre 9";
+}
+
+function teamMembers(config: OtherCompetitionConfig, teamId: string) {
+  const team = config.teams.find((item) => item.id === teamId);
+  return (team?.memberIds ?? [])
+    .map((id) => config.players.find((player) => player.id === id))
+    .filter((player): player is OtherCompetitionPlayer => Boolean(player));
+}
+
+function playersForCompetitor(config: OtherCompetitionConfig, competitor: Competitor) {
+  if (competitor.type === "team") return teamMembers(config, competitor.id);
+  const player = config.players.find((item) => item.id === competitor.id);
+  return player ? [player] : [];
+}
+
+function roundPointsFor(row: ReturnType<typeof totalStandings>[number], round: OtherCompetitionRound) {
+  return scoringUnitsForRound(round).reduce((sum, unit) => sum + (row.roundPoints[unit.resultKey] ?? 0), 0);
+}
+
+function resultForCompetitorUnit(config: OtherCompetitionConfig, competitor: Competitor, unit: ReturnType<typeof scoringUnitsForRound>[number]) {
+  const results = config.results[unit.resultKey] ?? [];
+  if (unit.round.playMode === "team") return results.find((result) => result.competitorId === competitor.id);
+  if (competitor.type === "player") return results.find((result) => result.competitorId === competitor.id);
+  return teamMembers(config, competitor.id)
+    .map((member) => results.find((result) => result.competitorId === member.id))
+    .filter(Boolean)
+    .at(0);
+}
+
+function roundResultLabel(config: OtherCompetitionConfig, competitor: Competitor, round: OtherCompetitionRound) {
+  const labels = scoringUnitsForRound(round)
+    .map((unit) => resultForCompetitorUnit(config, competitor, unit)?.scoreLabel)
+    .filter((label): label is string => Boolean(label));
+  return labels.join(" / ");
+}
+
+function playerResultForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound, playerId: string) {
+  for (const unit of scoringUnitsForRound(round)) {
+    const result = (config.results[unit.resultKey] ?? []).find((item) => item.competitorId === playerId);
+    if (result) return result;
+  }
+  return null;
+}
+
 function dayGroups(rounds: OtherCompetitionRound[]) {
   const groups: Array<{ key: string; label: string; rounds: OtherCompetitionRound[] }> = [];
   const byDate = new Map<string, OtherCompetitionRound[]>();
@@ -209,7 +271,6 @@ export default function OtherCompetitionPublicClient({
   const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
   const showCountdown = nextCountdown != null && nextCountdown > 0;
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
-  const scoringUnits = allScoringUnits(competition.config);
   const groupedRounds = dayGroups(rounds);
 
   return (
@@ -291,31 +352,40 @@ export default function OtherCompetitionPublicClient({
       ) : null}
 
       {tab === "standings" ? (
-        <section className="overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04]">
-          <div className="grid grid-cols-[54px_minmax(0,1fr)_80px] border-b border-white/10 px-3 py-3 text-xs uppercase tracking-[0.16em] text-white/42 md:grid-cols-[70px_minmax(0,1fr)_repeat(var(--rounds),70px)_90px]">
+        <section className="grid gap-3">
+          <div className="hidden grid-cols-[58px_minmax(0,1fr)_repeat(var(--rounds),72px)_86px] rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-xs uppercase tracking-[0.14em] text-white/42 md:grid">
             <div>Pl</div>
-            <div>Lag/spelare</div>
-            <div className="text-right md:hidden">Total</div>
-            {scoringUnits.map((unit, index) => (
-              <div key={unit.resultKey} className="hidden text-right md:block">
-                {unit.part ? `${unit.round.sortOrder + 1}${String.fromCharCode(97 + unit.part.sortOrder)}` : `R${index + 1}`}
+            <div>Lag</div>
+            {rounds.map((round) => (
+              <div key={round.id} className="text-right">
+                R{round.sortOrder + 1}
               </div>
             ))}
-            <div className="hidden text-right md:block">Total</div>
+            <div className="text-right">Total</div>
           </div>
-          <div className="divide-y divide-white/10">
+          <div className="grid gap-3">
             {standings.map((row) => (
               <div
                 key={row.competitor.id}
-                className="grid grid-cols-[54px_minmax(0,1fr)_80px] items-center px-3 py-3 md:grid-cols-[70px_minmax(0,1fr)_repeat(var(--rounds),70px)_90px]"
-                style={{ "--rounds": scoringUnits.length } as CSSProperties}
+                className="rounded-[22px] border border-white/10 bg-white/[0.04] p-3 md:grid md:grid-cols-[58px_minmax(0,1fr)_repeat(var(--rounds),72px)_86px] md:items-center md:gap-0"
+                style={{ "--rounds": rounds.length } as CSSProperties}
               >
-                <div className="font-semibold tabular-nums text-white/86">
-                  {row.placement ?? "-"}
-                  {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
+                <div className="flex items-center justify-between gap-3 md:block">
+                  <div className="font-semibold tabular-nums text-white/86">
+                    {row.placement ?? "-"}
+                    {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
+                  </div>
+                  <div className="text-right text-2xl font-semibold tabular-nums md:hidden">{fmtPoints(row.total)}</div>
                 </div>
-                <div className="flex min-w-0 items-center gap-3">
-                  <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
+                <div className="mt-3 flex min-w-0 items-center gap-3 md:mt-0">
+                  <div className="flex shrink-0 -space-x-2">
+                    {playersForCompetitor(competition.config, row.competitor).slice(0, 2).map((player) => (
+                      <MiniAvatar key={player.id} src={player.avatarUrl} name={player.name} />
+                    ))}
+                    {playersForCompetitor(competition.config, row.competitor).length === 0 ? (
+                      <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
+                    ) : null}
+                  </div>
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-2">
                       {row.competitor.type === "team" && row.competitor.teamColor ? (
@@ -330,25 +400,29 @@ export default function OtherCompetitionPublicClient({
                           {row.competitor.teamIcon ?? "◆"}
                         </span>
                       ) : null}
-                      <div className="truncate font-medium">{row.competitor.name}</div>
+                      <div className="truncate font-semibold">{row.competitor.name}</div>
                     </div>
-                    {row.competitor.type === "player" && row.competitor.teamName ? (
-                      <div className="mt-1">
-                        <TeamBadge competitor={row.competitor} />
-                      </div>
-                    ) : row.competitor.memberNames.length > 1 ? (
-                      <div className="truncate text-xs text-white/48">{row.competitor.memberNames.join(", ")}</div>
-                    ) : null}
                   </div>
                 </div>
-                <div className="text-right text-lg font-semibold tabular-nums">{fmtPoints(row.total)}</div>
-                {scoringUnits.map((unit) => (
-                  <div key={unit.resultKey} className="hidden text-right tabular-nums text-white/72 md:block">
-                    {fmtPoints(row.roundPoints[unit.resultKey] ?? 0)}
-                  </div>
-                ))}
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:contents">
+                  {rounds.map((round) => {
+                    const points = roundPointsFor(row, round);
+                    const label = roundResultLabel(competition.config, row.competitor, round);
+                    return (
+                      <div key={round.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 md:border-0 md:bg-transparent md:p-0 md:text-right">
+                        <div className="text-[10px] uppercase tracking-[0.14em] text-white/38 md:hidden">R{round.sortOrder + 1}</div>
+                        <div className="font-semibold tabular-nums">{fmtPoints(points)}</div>
+                        {label ? <div className="truncate text-xs text-white/45 md:hidden">{label}</div> : null}
+                      </div>
+                    );
+                  })}
+                </div>
                 <div className="hidden text-right text-lg font-semibold tabular-nums md:block">
                   {fmtPoints(row.total)}
+                </div>
+                <div className="hidden">
+                  {row.placement ?? "-"}
+                  {row.overridden ? <span className="ml-1 text-[10px] text-amber-200">*</span> : null}
                 </div>
               </div>
             ))}
@@ -464,6 +538,42 @@ export default function OtherCompetitionPublicClient({
                                     {item.time || "--"}
                                   </div>
                                 </div>
+                                {round.format === "switch_match_9" && (item.pairings ?? []).length > 0 ? (
+                                  <div className="mt-3 grid gap-3 border-t border-white/10 pt-3">
+                                    {(["front_9", "back_9"] as const).map((segment) => {
+                                      const pairings = (item.pairings ?? []).filter((pairing) => pairing.segment === segment);
+                                      if (pairings.length === 0) return null;
+                                      return (
+                                        <div key={segment} className="grid gap-2">
+                                          <div className="text-xs uppercase tracking-[0.16em] text-white/42">{segmentLabel(segment)}</div>
+                                          {pairings.map((pairing) => (
+                                            <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                {pairing.playerIds.map((playerId, index) => {
+                                                  const competitor = competitors.get(playerId);
+                                                  const result = playerResultForRound(competition.config, round, playerId);
+                                                  return (
+                                                    <span key={`${pairing.id}-${playerId}`} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-sm">
+                                                      <span>{competitor?.name ?? playerId}</span>
+                                                      {result ? (
+                                                        <span className="text-xs text-sky-100/80">
+                                                          {result.scoreLabel ? `${result.scoreLabel} · ` : ""}
+                                                          {fmtPoints(result.points)}p
+                                                        </span>
+                                                      ) : null}
+                                                      {index === 0 && pairing.playerIds.length > 1 ? <span className="text-white/35">vs</span> : null}
+                                                    </span>
+                                                  );
+                                                })}
+                                              </div>
+                                              {pairing.resultLabel ? <div className="mt-2 text-sm text-white/58">{pairing.resultLabel}</div> : null}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
                                 {item.note ? <div className="mt-2 text-sm text-white/55">{item.note}</div> : null}
                               </div>
                             ))}
@@ -487,6 +597,9 @@ export default function OtherCompetitionPublicClient({
                                         <span className="ml-2 inline-flex align-middle">
                                           <TeamBadge competitor={row.competitor} />
                                         </span>
+                                      ) : null}
+                                      {row.result?.scoreLabel ? (
+                                        <div className="mt-1 truncate text-xs text-white/45">{row.result.scoreLabel}</div>
                                       ) : null}
                                     </div>
                                     <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>

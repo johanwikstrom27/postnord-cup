@@ -48,11 +48,19 @@ export type OtherCompetitionScoringModel = {
   customText: string;
 };
 
+export type OtherCompetitionSchedulePairing = {
+  id: string;
+  segment: "front_9" | "back_9";
+  playerIds: string[];
+  resultLabel: string;
+};
+
 export type OtherCompetitionScheduleItem = {
   id: string;
   time: string;
   title: string;
   competitorIds: string[];
+  pairings?: OtherCompetitionSchedulePairing[];
   note: string;
 };
 
@@ -85,6 +93,7 @@ export type OtherCompetitionResult = {
   competitorId: string;
   scoreLabel: string;
   rawScore: number | null;
+  playerScores?: Record<string, number | null>;
   points: number;
   adjustment: number;
   bonus: number;

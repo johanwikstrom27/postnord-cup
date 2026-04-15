@@ -4,6 +4,8 @@ import type {
   OtherCompetitionRow,
   OtherCompetitionRound,
   OtherCompetitionRoundPart,
+  OtherCompetitionScheduleItem,
+  OtherCompetitionSchedulePairing,
   OtherCompetitionScoringModel,
   OtherCompetitionStatus,
 } from "@/lib/otherCompetitions/types";
@@ -78,6 +80,28 @@ function normalizeRoundPart(value: unknown, round: OtherCompetitionRound, index:
   };
 }
 
+function normalizeSchedulePairing(value: unknown, index: number): OtherCompetitionSchedulePairing {
+  const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionSchedulePairing>) : {};
+  return {
+    id: typeof input.id === "string" && input.id ? input.id : `pairing-${index}`,
+    segment: input.segment === "back_9" ? "back_9" : "front_9",
+    playerIds: Array.isArray(input.playerIds) ? input.playerIds.map(String).filter(Boolean).slice(0, 2) : [],
+    resultLabel: typeof input.resultLabel === "string" ? input.resultLabel : "",
+  };
+}
+
+function normalizeScheduleItem(value: unknown, index: number): OtherCompetitionScheduleItem {
+  const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionScheduleItem>) : {};
+  return {
+    id: typeof input.id === "string" && input.id ? input.id : `schedule-${index}`,
+    time: typeof input.time === "string" ? input.time : "",
+    title: typeof input.title === "string" && input.title ? input.title : `Boll ${index + 1}`,
+    competitorIds: Array.isArray(input.competitorIds) ? input.competitorIds.map(String).filter(Boolean) : [],
+    pairings: Array.isArray(input.pairings) ? input.pairings.map(normalizeSchedulePairing) : [],
+    note: typeof input.note === "string" ? input.note : "",
+  };
+}
+
 function normalizeRound(value: unknown, index: number): OtherCompetitionRound {
   const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionRound>) : {};
   const format = isFormat(input.format) ? input.format : "stableford";
@@ -92,7 +116,7 @@ function normalizeRound(value: unknown, index: number): OtherCompetitionRound {
     ballsCount: Number.isFinite(input.ballsCount) ? Number(input.ballsCount) : 0,
     scoringModel: normalizeScoringModel(input.scoringModel),
     parts: [],
-    schedule: Array.isArray(input.schedule) ? input.schedule : [],
+    schedule: Array.isArray(input.schedule) ? input.schedule.map(normalizeScheduleItem) : [],
     sortOrder: Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : index,
   };
 

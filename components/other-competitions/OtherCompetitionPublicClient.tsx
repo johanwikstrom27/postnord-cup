@@ -55,7 +55,6 @@ export default function OtherCompetitionPublicClient({
 }) {
   const [competition, setCompetition] = useState(initialCompetition);
   const [tab, setTab] = useState<Tab>("overview");
-  const [lastUpdated, setLastUpdated] = useState(initialCompetition.updated_at);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +66,6 @@ export default function OtherCompetitionPublicClient({
         const data = (await res.json()) as { competition?: OtherCompetitionRow };
         if (!cancelled && data.competition) {
           setCompetition(data.competition);
-          setLastUpdated(data.competition.updated_at);
         }
       } catch {
         // Live polling is an enhancement; the server rendered page still works.
@@ -123,14 +121,6 @@ export default function OtherCompetitionPublicClient({
           ) : null}
         </div>
       </section>
-
-      <div className="flex items-center justify-between gap-3 text-xs text-white/45">
-        <span>Liveuppdateras automatiskt</span>
-        <span>
-          Senast uppdaterad{" "}
-          {new Date(lastUpdated).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      </div>
 
       <nav className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
         {TABS.map((item) => (

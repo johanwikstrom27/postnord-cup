@@ -70,13 +70,13 @@ export default async function OtherCompetitionsPage() {
               href={`/other-competitions/${competition.slug}`}
               className="group overflow-hidden rounded-[24px] border border-white/10 bg-white/[0.04] shadow-[0_16px_60px_rgba(0,0,0,0.14)] transition hover:border-white/20 hover:bg-white/[0.07]"
             >
-              <div className="relative h-[220px] bg-black/25">
+              <div className="relative h-[220px] overflow-hidden bg-black/25">
                 {competition.card_image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={competition.card_image_url}
                     alt={competition.name}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                    className="absolute inset-0 h-full w-full object-cover transition duration-500 will-change-transform group-hover:scale-[1.03]"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-sm text-white/45">

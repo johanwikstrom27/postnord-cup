@@ -59,6 +59,8 @@ export type OtherCompetitionScheduleItem = {
 export type OtherCompetitionRoundPart = {
   id: string;
   name: string;
+  format: OtherCompetitionFormat;
+  customFormatName: string;
   holes: number;
   scoringModel: OtherCompetitionScoringModel;
   sortOrder: number;

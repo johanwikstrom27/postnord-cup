@@ -127,6 +127,16 @@ function ScoringPointsTable({ model }: { model: OtherCompetitionScoringModel }) 
   return <div className="rounded-2xl border border-sky-200/15 px-3 py-3 text-sm text-white/72">{scoringSummary(model)}</div>;
 }
 
+function partFormatLabel(part: NonNullable<OtherCompetitionRound["parts"]>[number], round: OtherCompetitionRound) {
+  return formatLabel(part.format ?? round.format, part.customFormatName);
+}
+
+function roundFormatSummary(round: OtherCompetitionRound) {
+  const parts = (round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  if (parts.length > 0) return parts.map((part) => partFormatLabel(part, round)).join(" + ");
+  return formatLabel(round.format, round.customFormatName);
+}
+
 function dayGroups(rounds: OtherCompetitionRound[]) {
   const groups: Array<{ key: string; label: string; rounds: OtherCompetitionRound[] }> = [];
   const byDate = new Map<string, OtherCompetitionRound[]>();
@@ -376,7 +386,7 @@ export default function OtherCompetitionPublicClient({
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold">{round.name}</h2>
                             <div className="mt-1 text-sm text-white/58">
-                              {formatLabel(round.format, round.customFormatName)} · {round.holes} hål ·{" "}
+                              {roundFormatSummary(round)} · {round.holes} hål ·{" "}
                               {round.playMode === "team" ? "Lag" : "Individuellt"}
                             </div>
                           </div>
@@ -401,7 +411,7 @@ export default function OtherCompetitionPublicClient({
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
                               <div className="text-xs uppercase tracking-[0.18em] text-white/42">Format</div>
-                              <div className="mt-2 font-semibold">{formatLabel(round.format, round.customFormatName)}</div>
+                              <div className="mt-2 font-semibold">{roundFormatSummary(round)}</div>
                               <div className="mt-1 text-sm text-white/58">
                                 {round.playMode === "team" ? "Lagspel" : "Individuellt"} · {round.holes} hål
                               </div>
@@ -413,7 +423,9 @@ export default function OtherCompetitionPublicClient({
                                   <div key={unit.resultKey} className="grid gap-2">
                                     <div className="flex items-center justify-between gap-3 text-sm">
                                       <span className="font-medium text-white/82">{unit.part ? unit.label : "Hela rundan"}</span>
-                                      <span className="text-right text-white/58">{scoringSummary(scoringModelForUnit(unit))}</span>
+                                      <span className="text-right text-white/58">
+                                        {unit.part ? partFormatLabel(unit.part, round) : scoringSummary(scoringModelForUnit(unit))}
+                                      </span>
                                     </div>
                                     <ScoringPointsTable model={scoringModelForUnit(unit)} />
                                   </div>

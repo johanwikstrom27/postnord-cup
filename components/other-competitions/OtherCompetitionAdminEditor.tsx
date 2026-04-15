@@ -95,11 +95,21 @@ function scoringKindLabel(kind: OtherCompetitionRound["scoringModel"]["kind"]) {
   return "Eget upplägg";
 }
 
-function resultScoreLabel(round: OtherCompetitionRound) {
-  if (round.format === "stableford") return "Poängbogey totalt";
-  if (round.format === "stroke_play") return "Slag totalt";
+function resultScoreLabel(round: OtherCompetitionRound, format = round.format) {
+  if (format === "stableford") return "Poängbogey totalt";
+  if (format === "stroke_play") return "Slag totalt";
   if (round.scoringModel.kind === "match") return "Matchresultat";
   return "Resultat i spelet";
+}
+
+function partFormatLabel(part: NonNullable<OtherCompetitionRound["parts"]>[number], round: OtherCompetitionRound) {
+  return formatLabel(part.format ?? round.format, part.customFormatName);
+}
+
+function roundFormatSummary(round: OtherCompetitionRound) {
+  const parts = (round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  if (parts.length > 0) return parts.map((part) => partFormatLabel(part, round)).join(" + ");
+  return formatLabel(round.format, round.customFormatName);
 }
 
 function PlacementPointsEditor({
@@ -630,6 +640,8 @@ export default function OtherCompetitionAdminEditor({
       {
         id: crypto.randomUUID(),
         name: "Hål 1-9",
+        format: "greensome" as const,
+        customFormatName: "",
         holes: 9,
         scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
         sortOrder: 0,
@@ -637,6 +649,8 @@ export default function OtherCompetitionAdminEditor({
       {
         id: crypto.randomUUID(),
         name: "Hål 10-18",
+        format: "best_ball" as const,
+        customFormatName: "",
         holes: 9,
         scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
         sortOrder: 1,
@@ -652,6 +666,8 @@ export default function OtherCompetitionAdminEditor({
     const part = {
       id: crypto.randomUUID(),
       name: `Del ${(round.parts ?? []).length + 1}`,
+      format: round.format,
+      customFormatName: "",
       holes: 9,
       scoringModel: { ...round.scoringModel, placementPoints: [...round.scoringModel.placementPoints] },
       sortOrder: (round.parts ?? []).length,
@@ -1209,7 +1225,7 @@ export default function OtherCompetitionAdminEditor({
                       <div className="min-w-0">
                         <div className="truncate text-lg font-semibold">{round.name}</div>
                         <div className="mt-1 text-sm text-white/58">
-                          {formatLabel(round.format, round.customFormatName)}
+                          {roundFormatSummary(round)}
                         </div>
                       </div>
                       <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-xs text-white/65">
@@ -1241,7 +1257,7 @@ export default function OtherCompetitionAdminEditor({
                   <div>
                     <h2 className="text-xl font-semibold">{round.name}</h2>
                     <div className="mt-1 text-sm text-white/55">
-                      {formatLabel(round.format, round.customFormatName)} · {round.holes} hål ·{" "}
+                      {roundFormatSummary(round)} · {round.holes} hål ·{" "}
                       {round.playMode === "team" ? "Lag" : "Individuellt"}
                     </div>
                   </div>
@@ -1348,6 +1364,42 @@ export default function OtherCompetitionAdminEditor({
                             <button type="button" disabled={locked} onClick={() => removeRoundPart(round, part.id)} className={buttonClass("danger")}>
                               Ta bort
                             </button>
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <label className="space-y-2">
+                              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Format för denna del</span>
+                              <select
+                                disabled={locked}
+                                value={part.format ?? round.format}
+                                onChange={(e) => {
+                                  const option = FORMAT_OPTIONS.find((item) => item.value === e.target.value);
+                                  patchRoundPart(round, part.id, {
+                                    format: e.target.value as OtherCompetitionRound["format"],
+                                    scoringModel: {
+                                      ...part.scoringModel,
+                                      kind: option?.scoringKind ?? part.scoringModel.kind,
+                                    },
+                                  });
+                                }}
+                                className={inputClass(locked)}
+                              >
+                                {FORMAT_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="space-y-2">
+                              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Eget formatnamn</span>
+                              <input
+                                disabled={locked || (part.format ?? round.format) !== "custom"}
+                                value={part.customFormatName ?? ""}
+                                onChange={(e) => patchRoundPart(round, part.id, { customFormatName: e.target.value })}
+                                placeholder="Endast för custom"
+                                className={inputClass(locked || (part.format ?? round.format) !== "custom")}
+                              />
+                            </label>
                           </div>
                           <div className="mt-3">
                             <ScoringModelEditor
@@ -1462,7 +1514,7 @@ export default function OtherCompetitionAdminEditor({
             >
               {scoringUnits.map((unit) => (
                 <option key={unit.resultKey} value={unit.resultKey}>
-                  {unit.part ? `${unit.round.name} - ${unit.label}` : unit.round.name}
+                  {unit.part ? `${unit.round.name} - ${unit.label} (${partFormatLabel(unit.part, unit.round)})` : unit.round.name}
                 </option>
               ))}
             </select>
@@ -1478,7 +1530,9 @@ export default function OtherCompetitionAdminEditor({
                       : selectedScoringUnit.round.name}
                   </h2>
                   <div className="text-sm text-white/55">
-                    {formatLabel(selectedScoringUnit.round.format, selectedScoringUnit.round.customFormatName)} ·{" "}
+                    {selectedScoringUnit.part
+                      ? partFormatLabel(selectedScoringUnit.part, selectedScoringUnit.round)
+                      : formatLabel(selectedScoringUnit.round.format, selectedScoringUnit.round.customFormatName)} ·{" "}
                     {selectedScoringUnit.holes} hål · {scoringKindLabel(scoringModelForUnit(selectedScoringUnit).kind)}
                   </div>
                 </div>
@@ -1488,9 +1542,9 @@ export default function OtherCompetitionAdminEditor({
                   </button>
                 ) : null}
               </div>
-              <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
+                <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
                 {selectedScoringUnit.round.playMode === "team"
-                  ? `Denna runda rankar lag. Skriv lagets ${resultScoreLabel(selectedScoringUnit.round).toLowerCase()} och räkna sedan tabellpoäng efter placering.`
+                  ? `Denna runda rankar lag. Skriv lagets ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} och räkna sedan tabellpoäng efter placering.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
                 Uppdelade 9-hålsdelar matas in var för sig.
               </div>
@@ -1516,7 +1570,7 @@ export default function OtherCompetitionAdminEditor({
                           />
                         </label>
                         <label className="space-y-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round)}</span>
+                          <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format)}</span>
                           <input
                             disabled={locked}
                             type="number"

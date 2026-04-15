@@ -48,7 +48,9 @@ export function teamDisplayName(team: OtherCompetitionTeam, players: OtherCompet
   if (explicit) return explicit;
 
   const byId = new Map(players.map((player) => [player.id, player.name]));
-  const names = team.memberIds.map((id) => byId.get(id)).filter((name): name is string => Boolean(name));
+  const names = team.memberIds
+    .map((id) => byId.get(id)?.trim().split(/\s+/)[0])
+    .filter((name): name is string => Boolean(name));
   if (names.length === 0) return `Lag ${team.sortOrder + 1}`;
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} & ${names[1]}`;

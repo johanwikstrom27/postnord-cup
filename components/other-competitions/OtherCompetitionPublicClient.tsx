@@ -73,19 +73,58 @@ function earliestStartTime(round: OtherCompetitionRound) {
 }
 
 function scoringSummary(model: OtherCompetitionScoringModel) {
-  const bits: string[] = [];
   if (model.kind === "placement" && model.placementPoints.length) {
-    bits.push(`Placering ${model.placementPoints.join("-")}`);
-  } else if (model.kind === "match") {
-    bits.push(`Match ${model.winPoints}-${model.drawPoints}-${model.lossPoints}`);
-  } else if (model.kind === "manual") {
-    bits.push("Manuell poäng");
-  } else {
-    bits.push("Custom");
+    return "Tabellpoäng efter placering";
   }
-  if (model.maxPoints != null) bits.push(`Max ${model.maxPoints}`);
-  if (model.bonusPoints) bits.push(`Bonus ${model.bonusPoints}`);
-  return bits.join(" · ");
+  if (model.kind === "match") return `Match: ${model.winPoints}-${model.drawPoints}-${model.lossPoints}`;
+  if (model.kind === "manual") return "Manuell tabellpoäng";
+  return "Eget upplägg";
+}
+
+function placeLabel(index: number) {
+  if (index === 0) return "1:a";
+  if (index === 1) return "2:a";
+  return `${index + 1}:e`;
+}
+
+function ScoringPointsTable({ model }: { model: OtherCompetitionScoringModel }) {
+  if (model.kind === "placement") {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-sky-200/15">
+        <div className="grid grid-cols-2 bg-sky-300/10 px-3 py-2 text-xs uppercase tracking-[0.16em] text-sky-100/65">
+          <div>Placering</div>
+          <div className="text-right">Poäng</div>
+        </div>
+        {(model.placementPoints.length ? model.placementPoints : [6, 5, 4, 3, 2, 1]).map((points, index) => (
+          <div key={index} className="grid grid-cols-2 border-t border-sky-200/10 px-3 py-2 text-sm">
+            <div className="text-white/78">{placeLabel(index)}</div>
+            <div className="text-right font-semibold tabular-nums text-white">{points}p</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (model.kind === "match") {
+    return (
+      <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-sky-200/15 text-center text-sm">
+        <div className="border-r border-sky-200/10 p-3">
+          <div className="text-xs uppercase tracking-[0.14em] text-sky-100/55">Vinst</div>
+          <div className="mt-1 font-semibold">{model.winPoints}p</div>
+        </div>
+        <div className="border-r border-sky-200/10 p-3">
+          <div className="text-xs uppercase tracking-[0.14em] text-sky-100/55">Oavgjort</div>
+          <div className="mt-1 font-semibold">{model.drawPoints}p</div>
+        </div>
+        <div className="p-3">
+          <div className="text-xs uppercase tracking-[0.14em] text-sky-100/55">Förlust</div>
+          <div className="mt-1 font-semibold">{model.lossPoints}p</div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="rounded-2xl border border-sky-200/15 px-3 py-3 text-sm text-white/72">{scoringSummary(model)}</div>;
 }
 
 function dayGroups(rounds: OtherCompetitionRound[]) {
@@ -369,11 +408,14 @@ export default function OtherCompetitionPublicClient({
                             </div>
                             <div className="rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
                               <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Poäng på spel</div>
-                              <div className="mt-2 grid gap-1 text-sm text-white/78">
+                              <div className="mt-3 grid gap-3">
                                 {units.map((unit) => (
-                                  <div key={unit.resultKey} className="flex items-center justify-between gap-3">
-                                    <span>{unit.part ? unit.label : "Hela rundan"}</span>
-                                    <span className="text-right text-white/58">{scoringSummary(scoringModelForUnit(unit))}</span>
+                                  <div key={unit.resultKey} className="grid gap-2">
+                                    <div className="flex items-center justify-between gap-3 text-sm">
+                                      <span className="font-medium text-white/82">{unit.part ? unit.label : "Hela rundan"}</span>
+                                      <span className="text-right text-white/58">{scoringSummary(scoringModelForUnit(unit))}</span>
+                                    </div>
+                                    <ScoringPointsTable model={scoringModelForUnit(unit)} />
                                   </div>
                                 ))}
                               </div>

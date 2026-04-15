@@ -9,6 +9,7 @@ import type {
   OtherCompetitionRow,
   OtherCompetitionSchedulePairing,
   OtherCompetitionScoringModel,
+  OtherCompetitionTeam,
 } from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
 import { formatLabel } from "@/lib/otherCompetitions/templates";
@@ -162,6 +163,32 @@ function teamMembers(config: OtherCompetitionConfig, teamId: string) {
   return (team?.memberIds ?? [])
     .map((id) => config.players.find((player) => player.id === id))
     .filter((player): player is OtherCompetitionPlayer => Boolean(player));
+}
+
+function sortedTeams(teams: OtherCompetitionTeam[]) {
+  return teams.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function teamCompetitor(config: OtherCompetitionConfig, team: OtherCompetitionTeam): Competitor {
+  const members = teamMembers(config, team.id);
+  return {
+    id: team.id,
+    type: "team",
+    name: teamDisplayName(team, config.players),
+    avatarUrl: members[0]?.avatarUrl ?? null,
+    memberNames: members.map((member) => member.name),
+    teamId: team.id,
+    teamName: teamDisplayName(team, config.players),
+    teamColor: team.color,
+    teamIcon: team.icon ?? null,
+  };
+}
+
+function scheduleCompetitorsForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
+  if (round.format === "switch_match_9" && config.teams.length > 0) {
+    return sortedTeams(config.teams).map((team) => teamCompetitor(config, team));
+  }
+  return competitorsForRound(config, round);
 }
 
 function playersForCompetitor(config: OtherCompetitionConfig, competitor: Competitor) {
@@ -441,7 +468,8 @@ export default function OtherCompetitionPublicClient({
                   const firstStart = earliestStartTime(round);
                   const selected = selectedScheduleRoundId === round.id;
                   const rows = roundLeaderboard(competition.config, round);
-                  const competitors = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
+                  const competitors = new Map(scheduleCompetitorsForRound(competition.config, round).map((item) => [item.id, item]));
+                  const players = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
 
                   return (
                     <div
@@ -550,7 +578,7 @@ export default function OtherCompetitionPublicClient({
                                             <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2">
                                               <div className="flex flex-wrap items-center gap-2">
                                                 {pairing.playerIds.map((playerId, index) => {
-                                                  const competitor = competitors.get(playerId);
+                                                  const competitor = players.get(playerId);
                                                   const result = playerResultForRound(competition.config, round, playerId);
                                                   return (
                                                     <span key={`${pairing.id}-${playerId}`} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-sm">

@@ -595,6 +595,38 @@ export default function OtherCompetitionAdminEditor({
       .filter((player): player is OtherCompetitionPlayer => Boolean(player));
   }
 
+  function teamCompetitor(team: OtherCompetitionTeam): Competitor {
+    const members = teamMembers(team.id);
+    return {
+      id: team.id,
+      type: "team",
+      name: teamDisplayName(team, config.players),
+      avatarUrl: members[0]?.avatarUrl ?? null,
+      memberNames: members.map((member) => member.name),
+      teamId: team.id,
+      teamName: teamDisplayName(team, config.players),
+      teamColor: team.color,
+      teamIcon: team.icon ?? null,
+    };
+  }
+
+  function scheduleCompetitorsForRound(round: OtherCompetitionRound) {
+    if (round.format === "switch_match_9" && config.teams.length > 0) {
+      return sortedTeams(config.teams).map(teamCompetitor);
+    }
+    return competitorsForRound(config, round);
+  }
+
+  function pairingPlayersForItem(item: OtherCompetitionScheduleItem) {
+    const playerIds = item.competitorIds.flatMap((id) => {
+      const team = config.teams.find((row) => row.id === id);
+      return team ? team.memberIds : [id];
+    });
+    return playerIds
+      .map((id) => config.players.find((player) => player.id === id))
+      .filter((player): player is OtherCompetitionPlayer => Boolean(player));
+  }
+
   function movePlayerToTeam(playerId: string, targetTeamId: string) {
     if (locked) return;
     patchConfig((prev) => ({
@@ -829,10 +861,34 @@ export default function OtherCompetitionAdminEditor({
     patchRound(round.id, { schedule: [...round.schedule, item] });
   }
 
-  function defaultSwitchPairings(playerIds: string[]) {
+  function defaultSwitchPairings(competitorIds: string[]) {
     const pairings: OtherCompetitionSchedulePairing[] = [];
-    for (let index = 0; index < playerIds.length; index += 4) {
-      const group = playerIds.slice(index, index + 4);
+
+    if (competitorIds.every((id) => config.teams.some((team) => team.id === id))) {
+      for (let index = 0; index < competitorIds.length; index += 2) {
+        const teamA = config.teams.find((team) => team.id === competitorIds[index]);
+        const teamB = config.teams.find((team) => team.id === competitorIds[index + 1]);
+        if (!teamA || !teamB) continue;
+        const [a1, a2] = teamA.memberIds;
+        const [b1, b2] = teamB.memberIds;
+        if (a1 && b1) {
+          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a1, b1], resultLabel: "" });
+        }
+        if (a2 && b2) {
+          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a2, b2], resultLabel: "" });
+        }
+        if (a1 && b2) {
+          pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a1, b2], resultLabel: "" });
+        }
+        if (a2 && b1) {
+          pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a2, b1], resultLabel: "" });
+        }
+      }
+      return pairings;
+    }
+
+    for (let index = 0; index < competitorIds.length; index += 4) {
+      const group = competitorIds.slice(index, index + 4);
       if (group.length < 2) continue;
       pairings.push({
         id: crypto.randomUUID(),
@@ -866,8 +922,9 @@ export default function OtherCompetitionAdminEditor({
 
   function generateSchedule(round: OtherCompetitionRound) {
     if (locked) return;
-    const competitors = competitorsForRound(config, round);
-    const ballsCount = round.ballsCount > 0 ? round.ballsCount : Math.ceil(competitors.length / 4);
+    const competitors = scheduleCompetitorsForRound(round);
+    const defaultPerBall = round.format === "switch_match_9" && config.teams.length > 0 ? 2 : 4;
+    const ballsCount = round.ballsCount > 0 ? round.ballsCount : Math.ceil(competitors.length / defaultPerBall);
     const perBall = Math.max(1, Math.ceil(competitors.length / Math.max(1, ballsCount)));
     const schedule: OtherCompetitionScheduleItem[] = [];
 
@@ -945,7 +1002,12 @@ export default function OtherCompetitionAdminEditor({
         const withoutCompetitor = item.competitorIds.filter((id) => id !== competitorId);
         if (item.id !== itemId) return { ...item, competitorIds: withoutCompetitor };
         if (item.competitorIds.includes(competitorId)) return item;
-        return { ...item, competitorIds: [...item.competitorIds, competitorId] };
+        const competitorIds = [...item.competitorIds, competitorId];
+        return {
+          ...item,
+          competitorIds,
+          pairings: round.format === "switch_match_9" ? defaultSwitchPairings(competitorIds) : item.pairings,
+        };
       }),
     });
   }
@@ -958,10 +1020,10 @@ export default function OtherCompetitionAdminEditor({
           ? {
               ...item,
               competitorIds: item.competitorIds.filter((id) => id !== competitorId),
-              pairings: (item.pairings ?? []).map((pairing) => ({
-                ...pairing,
-                playerIds: pairing.playerIds.filter((id) => id !== competitorId),
-              })),
+              pairings:
+                round.format === "switch_match_9"
+                  ? defaultSwitchPairings(item.competitorIds.filter((id) => id !== competitorId))
+                  : item.pairings,
             }
           : item
       ),
@@ -1421,7 +1483,8 @@ export default function OtherCompetitionAdminEditor({
           ) : null}
 
           {(selectedRound ? [selectedRound] : []).map((round) => {
-            const competitors = competitorsForRound(config, round);
+            const competitors = scheduleCompetitorsForRound(round);
+            const poolLabel = round.format === "switch_match_9" && config.teams.length > 0 ? "Lagpool" : "Spelarpool";
             return (
               <div key={round.id} className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
                 <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1609,7 +1672,7 @@ export default function OtherCompetitionAdminEditor({
                       <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
-                            <div className="text-xs uppercase tracking-[0.18em] text-white/45">Spelarpool</div>
+                            <div className="text-xs uppercase tracking-[0.18em] text-white/45">{poolLabel}</div>
                             <div className="mt-1 text-sm text-white/55">Ej placerade i någon boll/match.</div>
                           </div>
                           <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/65">
@@ -1739,11 +1802,11 @@ export default function OtherCompetitionAdminEditor({
                                       className={inputClass(locked)}
                                     >
                                       <option value="">Välj spelare</option>
-                                      {item.competitorIds.map((id) => {
-                                        const competitor = competitors.find((row) => row.id === id);
+                                      {pairingPlayersForItem(item).map((player) => {
+                                        const team = playerTeam(player.id);
                                         return (
-                                          <option key={id} value={id}>
-                                            {competitor?.name ?? id}
+                                          <option key={player.id} value={player.id}>
+                                            {firstName(player.name)}{team ? ` (${teamDisplayName(team, config.players)})` : ""}
                                           </option>
                                         );
                                       })}

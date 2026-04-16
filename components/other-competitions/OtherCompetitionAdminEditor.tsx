@@ -121,6 +121,21 @@ function resolvedResultDisplay(format: OtherCompetitionRound["format"], model: O
   return model.resultDisplay ?? defaultResultDisplayForFormat(format);
 }
 
+function resultValueSuffix(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  if (model.kind === "match") return resolvedResultDisplay(format, model) === "points" ? " p" : "";
+  return (model.placementMetric ?? defaultPlacementMetricForFormat(format)) === "strokes" ? " slag" : " p";
+}
+
+function formatResultValue(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return `${fmtPoints(value)}${resultValueSuffix(format, model)}`;
+}
+
+function autoResultScoreLabel(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  if (value == null || !Number.isFinite(value)) return "";
+  return `${fmtPoints(value)}${resultValueSuffix(format, model)}`;
+}
+
 function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
 }
@@ -1241,9 +1256,16 @@ export default function OtherCompetitionAdminEditor({
 
   function patchUnitResult(unit: NonNullable<typeof selectedScoringUnit>, competitorId: string, patch: Partial<OtherCompetitionResult>) {
     if (isRoundLocked(unit.round)) return;
-    const results = ensureUnitResults(unit).map((result) =>
-      result.competitorId === competitorId ? { ...result, ...patch } : result
-    );
+    const model = scoringModelForUnit(unit);
+    const format = unitFormat(unit);
+    const results = ensureUnitResults(unit).map((result) => {
+      if (result.competitorId !== competitorId) return result;
+      const nextResult = { ...result, ...patch };
+      if (model.kind === "placement" && "rawScore" in patch && !("scoreLabel" in patch)) {
+        nextResult.scoreLabel = autoResultScoreLabel(nextResult.rawScore, format, model);
+      }
+      return nextResult;
+    });
     patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
   }
 
@@ -1261,7 +1283,7 @@ export default function OtherCompetitionAdminEditor({
         .map((member) => ({ member, value: playerScores[member.id] }))
         .filter((row): row is { member: OtherCompetitionPlayer; value: number } => typeof row.value === "number" && Number.isFinite(row.value));
       const total = entered.reduce((sum, row) => sum + row.value, 0);
-      const suffix = unitFormat(unit) === "stableford" ? "p" : "";
+      const suffix = resultValueSuffix(unitFormat(unit), scoringModelForUnit(unit));
       return {
         ...result,
         playerScores,
@@ -1277,8 +1299,7 @@ export default function OtherCompetitionAdminEditor({
 
   function scoreComparedResultText(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
     if (value == null || !Number.isFinite(value)) return "";
-    const suffix = resolvedResultDisplay(format, model) === "points" ? "p" : "";
-    return `${fmtPoints(value)}${suffix}`;
+    return `${fmtPoints(value)}${resultValueSuffix(format, model)}`;
   }
 
   function scoreComparedMatchupLabel(
@@ -2912,39 +2933,19 @@ export default function OtherCompetitionAdminEditor({
                       ) : model.kind === "placement" ? (
                         <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
                           <label className="space-y-2">
-                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultattext</span>
-                            <input
-                              disabled={selectedRoundLocked}
-                              value={result.scoreLabel}
-                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
-                              placeholder="34 p"
-                              className={inputClass(selectedRoundLocked)}
-                            />
-                          </label>
-                          <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format, model)}</span>
                             <input
                               disabled={selectedRoundLocked}
                               type="number"
                               value={result.rawScore ?? ""}
                               onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { rawScore: e.target.value === "" ? null : Number(e.target.value) })}
-                              placeholder="34"
+                              placeholder={resultValueSuffix(format, model).trim() === "slag" ? "77" : "34"}
                               className={inputClass(selectedRoundLocked)}
                             />
                           </label>
                         </div>
                       ) : (
                         <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
-                          <label className="space-y-2">
-                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">Resultat</span>
-                            <input
-                              disabled={selectedRoundLocked}
-                              value={result.scoreLabel}
-                              onChange={(e) => patchUnitResult(selectedScoringUnit, competitor.id, { scoreLabel: e.target.value })}
-                              placeholder="2&1, delad eller vinst"
-                              className={inputClass(selectedRoundLocked)}
-                            />
-                          </label>
                           <label className="space-y-2">
                             <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng till laget</span>
                             <input
@@ -2961,11 +2962,13 @@ export default function OtherCompetitionAdminEditor({
                       <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]">
                         <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
                           <span className="text-white/45">Resultat:</span>{" "}
-                          <span className="font-semibold text-white">{result.rawScore ?? "-"}</span>
-                          {result.scoreLabel ? <span className="ml-2 text-white/55">{result.scoreLabel}</span> : null}
+                          <span className="font-semibold text-white">{formatResultValue(result.rawScore, format, model)}</span>
+                          {result.scoreLabel && result.scoreLabel !== autoResultScoreLabel(result.rawScore, format, model) ? (
+                            <span className="ml-2 text-white/55">{result.scoreLabel}</span>
+                          ) : null}
                         </div>
                         <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
-                          Tabellpoäng <span className="font-semibold tabular-nums">{fmtPoints(result.points)}</span>
+                          Tabellpoäng <span className="font-semibold tabular-nums">{fmtPoints(result.points)}p</span>
                         </div>
                         {showPlayoff ? (
                           <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3">

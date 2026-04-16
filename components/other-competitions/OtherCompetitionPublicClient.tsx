@@ -123,6 +123,11 @@ function resolvedResultDisplay(format: OtherCompetitionRound["format"], model: O
   return model.resultDisplay ?? defaultResultDisplayForFormat(format);
 }
 
+function resultValueSuffix(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  if (model.kind === "match") return resolvedResultDisplay(format, model) === "points" ? " p" : "";
+  return (model.placementMetric ?? "points") === "strokes" ? " slag" : " p";
+}
+
 function usesScoreComparedTeamMatchResults(
   round: OtherCompetitionRound,
   format: OtherCompetitionRound["format"],
@@ -133,8 +138,7 @@ function usesScoreComparedTeamMatchResults(
 
 function scoreComparedResultText(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
   if (value == null || !Number.isFinite(value)) return "";
-  const suffix = resolvedResultDisplay(format, model) === "points" ? "p" : "";
-  return `${fmtPoints(value)}${suffix}`;
+  return `${fmtPoints(value)}${resultValueSuffix(format, model)}`;
 }
 
 function itemScoreComparedLabels(
@@ -900,7 +904,7 @@ export default function OtherCompetitionPublicClient({
                                         <div className="mt-1 truncate text-xs text-white/45">{row.result.scoreLabel}</div>
                                       ) : null}
                                     </div>
-                                    <div className="font-semibold tabular-nums">{fmtPoints(row.points)}</div>
+                                    <div className="font-semibold tabular-nums">{fmtTablePoints(row.points)}</div>
                                   </div>
                                 ))}
                               </div>

@@ -389,6 +389,21 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
       competitor,
       points: total,
       roundPoints,
+      result:
+        Number(config.finalPlacementOverrides?.[competitor.id]) === 1
+          ? {
+              competitorId: competitor.id,
+              scoreLabel: "",
+              rawScore: null,
+              playerScores: {},
+              points: 0,
+              adjustment: 0,
+              bonus: 0,
+              placementOverride: 1,
+              winnerOverride: true,
+              note: "",
+            }
+          : undefined,
     };
   });
 

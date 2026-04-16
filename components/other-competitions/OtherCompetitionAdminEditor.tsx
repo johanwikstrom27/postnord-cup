@@ -26,6 +26,7 @@ import {
   scoringModelForUnit,
   scoringUnitsForRound,
   teamDisplayName,
+  totalStandings,
 } from "@/lib/otherCompetitions/scoring";
 
 type Tab = "basic" | "players" | "teams" | "schedule" | "results" | "rules";
@@ -564,6 +565,13 @@ export default function OtherCompetitionAdminEditor({
 
   const rounds = useMemo(() => sortedRounds(config.rounds), [config.rounds]);
   const generatedRulesDraft = useMemo(() => buildCompetitionRulesDraft(config), [config]);
+  const standings = useMemo(() => totalStandings(config), [config]);
+  const finalPlayoffRows = useMemo(() => {
+    const topTotal = standings[0]?.total;
+    if (topTotal == null) return [];
+    const tiedRows = standings.filter((row) => row.total === topTotal);
+    return tiedRows.length > 1 ? tiedRows : [];
+  }, [standings]);
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? rounds[0] ?? null;
   const scoringUnits = useMemo(() => allScoringUnits(config), [config]);
   const selectedScoringUnit =
@@ -586,6 +594,24 @@ export default function OtherCompetitionAdminEditor({
   function patchConfig(updater: (prev: OtherCompetitionConfig) => OtherCompetitionConfig) {
     setConfig((prev) => updater(normalizeConfig(prev)));
     markDirty();
+  }
+
+  function setFinalPlayoffWinner(competitorId: string, checked: boolean) {
+    patchConfig((prev) => {
+      const topTotal = totalStandings(prev)[0]?.total;
+      const tiedRows = topTotal == null ? [] : totalStandings(prev).filter((row) => row.total === topTotal);
+      const tieIds = tiedRows.length > 1 ? tiedRows.map((row) => row.competitor.id) : [];
+      const nextOverrides = { ...(prev.finalPlacementOverrides ?? {}) };
+
+      for (const id of tieIds) {
+        nextOverrides[id] = checked && id === competitorId ? 1 : null;
+      }
+
+      return {
+        ...prev,
+        finalPlacementOverrides: nextOverrides,
+      };
+    });
   }
 
   const saveNow = useCallback(async (nextCompetition = competition, nextConfig = config) => {
@@ -2562,6 +2588,41 @@ export default function OtherCompetitionAdminEditor({
 
       {tab === "results" ? (
         <section className="space-y-4">
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+            <div className="text-xs uppercase tracking-[0.22em] text-white/45">Slutställning</div>
+            <div className="mt-1 text-sm text-white/55">
+              Om totalledningen delas kan du markera vem som vann särspel och därmed blir officiell segrare.
+            </div>
+            {finalPlayoffRows.length > 1 ? (
+              <div className="mt-4 grid gap-3">
+                {finalPlayoffRows.map((row) => (
+                  <div
+                    key={row.competitor.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3"
+                  >
+                    <div>
+                      <div className="font-semibold text-amber-50">{row.competitor.name}</div>
+                      <div className="text-sm text-amber-100/70">{fmtPoints(row.total)}p i totalen</div>
+                    </div>
+                    <label className="flex items-center gap-3 text-sm text-amber-50">
+                      <input
+                        disabled={locked}
+                        type="checkbox"
+                        checked={Number(config.finalPlacementOverrides?.[row.competitor.id]) === 1}
+                        onChange={(e) => setFinalPlayoffWinner(row.competitor.id, e.target.checked)}
+                      />
+                      Vann särspel totalt
+                    </label>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/60">
+                Ingen delad förstaplats i totalställningen just nu.
+              </div>
+            )}
+          </div>
+
           <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
             <select
               value={selectedScoringUnit?.resultKey ?? ""}

@@ -149,15 +149,21 @@ function matchMarginLabel(pairing: Pick<OtherCompetitionSchedulePairing, "matchP
 }
 
 function buildPairingResultLabel(
-  pairing: Pick<OtherCompetitionSchedulePairing, "winnerId" | "halved" | "matchPoints" | "holesRemaining">,
+  pairing: Pick<OtherCompetitionSchedulePairing, "playerIds" | "winnerId" | "halved" | "matchPoints" | "holesRemaining">,
   playerNamesById: Map<string, string>
 ) {
-  if (pairing.halved) return "Delad match";
-  if (!pairing.winnerId) return "";
-  const winnerName = playerNamesById.get(pairing.winnerId);
-  if (!winnerName) return "";
+  const [playerAId, playerBId] = pairing.playerIds ?? [];
+  const playerAName = playerAId ? firstName(playerNamesById.get(playerAId) ?? playerAId) : "";
+  const playerBName = playerBId ? firstName(playerNamesById.get(playerBId) ?? playerBId) : "";
+  if (pairing.halved) return playerAName && playerBName ? `${playerAName} vs ${playerBName} delad` : "Delad match";
+  if (!pairing.winnerId) return playerAName && playerBName ? `${playerAName} vs ${playerBName}` : "";
+  const winnerName = firstName(playerNamesById.get(pairing.winnerId) ?? pairing.winnerId);
+  const loserName =
+    pairing.winnerId === playerAId ? playerBName : pairing.winnerId === playerBId ? playerAName : "";
   const margin = matchMarginLabel(pairing);
-  return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
+  if (margin && loserName) return `${winnerName} ${margin} vs ${loserName}`;
+  if (loserName) return `${winnerName} vann vs ${loserName}`;
+  return margin ? `${winnerName} ${margin}` : `${winnerName} vann`;
 }
 
 function usesStructuredTeamMatchResults(
@@ -817,7 +823,7 @@ export default function OtherCompetitionAdminEditor({
       typeof pairing.holesRemaining === "number" && Number.isFinite(pairing.holesRemaining) && pairing.holesRemaining >= 0
         ? pairing.holesRemaining
         : null;
-    const autoLabel = buildPairingResultLabel({ winnerId, halved, matchPoints, holesRemaining }, playerNamesById);
+    const autoLabel = buildPairingResultLabel({ playerIds, winnerId, halved, matchPoints, holesRemaining }, playerNamesById);
 
     return {
       ...pairing,

@@ -281,8 +281,68 @@ function matchSegmentHeading(round: OtherCompetitionRound, segment: OtherCompeti
   return segment === "front_9" ? "Matcher hål 1-9" : "Matcher hål 10-18";
 }
 
+function matchMarginLabel(pairing: Pick<OtherCompetitionSchedulePairing, "matchPoints" | "holesRemaining">) {
+  const matchPoints = Number(pairing.matchPoints ?? 0);
+  const holesRemaining = Number(pairing.holesRemaining ?? 0);
+  if (!Number.isFinite(matchPoints) || matchPoints <= 0) return "";
+  if (!Number.isFinite(holesRemaining) || holesRemaining <= 0) return `${matchPoints}up`;
+  return `${matchPoints}&${holesRemaining}`;
+}
+
+function pairingDisplayLabel(
+  pairing: OtherCompetitionSchedulePairing,
+  players: Map<string, Competitor>
+) {
+  const [playerAId, playerBId] = pairing.playerIds;
+  const playerAName = playerAId ? firstName(players.get(playerAId)?.name ?? playerAId) : "";
+  const playerBName = playerBId ? firstName(players.get(playerBId)?.name ?? playerBId) : "";
+  if (pairing.halved) return playerAName && playerBName ? `${playerAName} vs ${playerBName} delad` : "Delad match";
+  if (!pairing.winnerId) return playerAName && playerBName ? `${playerAName} vs ${playerBName}` : pairing.resultLabel || "";
+  const winnerName = firstName(players.get(pairing.winnerId)?.name ?? pairing.winnerId);
+  const loserName =
+    pairing.winnerId === playerAId ? playerBName : pairing.winnerId === playerBId ? playerAName : "";
+  const margin = matchMarginLabel(pairing);
+  if (margin && loserName) return `${winnerName} ${margin} vs ${loserName}`;
+  if (loserName) return `${winnerName} vann vs ${loserName}`;
+  return margin ? `${winnerName} ${margin}` : `${winnerName} vann`;
+}
+
 function scheduleItemLabel(index: number) {
   return `Boll ${index + 1}`;
+}
+
+function unitForSegment(round: OtherCompetitionRound, units: ReturnType<typeof scoringUnitsForRound>, segment: OtherCompetitionSchedulePairing["segment"]) {
+  if (units.length === 0) return null;
+  if (units.length === 1) return units[0];
+  return units[segment === "front_9" ? 0 : Math.min(1, units.length - 1)];
+}
+
+function teamPointsForItemSegment(
+  config: OtherCompetitionConfig,
+  round: OtherCompetitionRound,
+  item: { competitorIds: string[] },
+  unit: ReturnType<typeof scoringUnitsForRound>[number] | null
+) {
+  if (!unit || item.competitorIds.length < 2) return [];
+  const results = config.results[unit.resultKey] ?? [];
+  const competitors = new Map(scheduleCompetitorsForRound(config, round).map((competitor) => [competitor.id, competitor]));
+  return item.competitorIds.map((competitorId) => {
+    const competitor = competitors.get(competitorId);
+    const team = config.teams.find((row) => row.id === competitorId);
+    const points =
+      round.playMode === "team"
+        ? results
+            .filter((result) => result.competitorId === competitorId)
+            .reduce((sum, result) => sum + Number(result.points || 0) + Number(result.adjustment || 0) + Number(result.bonus || 0), 0)
+        : (team?.memberIds ?? [])
+            .map((playerId) => results.find((result) => result.competitorId === playerId))
+            .reduce((sum, result) => sum + Number(result?.points || 0) + Number(result?.adjustment || 0) + Number(result?.bonus || 0), 0);
+    return {
+      competitorId,
+      label: competitor?.name ?? competitorId,
+      points,
+    };
+  });
 }
 
 function teamMembers(config: OtherCompetitionConfig, teamId: string) {
@@ -853,6 +913,9 @@ export default function OtherCompetitionPublicClient({
                                     {matchPairingSegments(round).map((segment) => {
                                       const pairings = (item.pairings ?? []).filter((pairing) => pairing.segment === segment);
                                       if (pairings.length === 0) return null;
+                                      const segmentUnit = unitForSegment(round, units, segment);
+                                      const teamPoints = teamPointsForItemSegment(competition.config, round, item, segmentUnit);
+                                      const hasSegmentResult = pairings.some((pairing) => pairing.halved || pairing.winnerId);
                                       return (
                                         <div key={segment} className="grid gap-2">
                                           <div className="text-xs uppercase tracking-[0.16em] text-white/42">
@@ -860,21 +923,14 @@ export default function OtherCompetitionPublicClient({
                                           </div>
                                           {pairings.map((pairing) => (
                                             <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/82">
-                                              {pairing.resultLabel ? (
-                                                <div className="font-medium text-sky-100/88">{pairing.resultLabel}</div>
-                                              ) : (
-                                                <div className="font-medium">
-                                                  {pairing.playerIds
-                                                    .map((playerId) => {
-                                                      const competitor = players.get(playerId);
-                                                      return competitor ? firstName(competitor.name) : playerId;
-                                                    })
-                                                    .filter(Boolean)
-                                                    .join(" vs ")}
-                                                </div>
-                                              )}
+                                              <div className="font-medium text-sky-100/88">{pairingDisplayLabel(pairing, players)}</div>
                                             </div>
                                           ))}
+                                          {hasSegmentResult && teamPoints.length >= 2 ? (
+                                            <div className="px-1 text-xs text-white/58">
+                                              Lagpoäng: {teamPoints.map((entry) => `${entry.label} ${fmtTablePoints(entry.points)}`).join(" · ")}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       );
                                     })}
@@ -892,7 +948,7 @@ export default function OtherCompetitionPublicClient({
 
                           {rows.some((row) => row.points !== 0 || row.result?.scoreLabel) ? (
                             <div className="mt-4 border-t border-white/10 pt-4">
-                              <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Ställning i denna runda</div>
+                              <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Resultat</div>
                               <div className="grid gap-2">
                                 {rows.slice(0, 6).map((row) => (
                                   <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">

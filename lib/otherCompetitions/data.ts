@@ -5,6 +5,7 @@ import type {
   OtherCompetitionRound,
   OtherCompetitionRoundPart,
   OtherCompetitionScheduleItem,
+  OtherCompetitionScheduleItemMatchResult,
   OtherCompetitionSchedulePairing,
   OtherCompetitionScoringModel,
   OtherCompetitionStatus,
@@ -104,6 +105,17 @@ function normalizeSchedulePairing(value: unknown, index: number): OtherCompetiti
 
 function normalizeScheduleItem(value: unknown, index: number): OtherCompetitionScheduleItem {
   const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionScheduleItem>) : {};
+  const normalizeMatchResult = (matchValue: unknown): OtherCompetitionScheduleItemMatchResult => {
+    const matchInput = typeof matchValue === "object" && matchValue !== null ? (matchValue as Partial<OtherCompetitionScheduleItemMatchResult>) : {};
+    return {
+      matchWinnerCompetitorId: typeof matchInput.matchWinnerCompetitorId === "string" ? matchInput.matchWinnerCompetitorId : null,
+      matchHalved: Boolean(matchInput.matchHalved),
+      matchPoints: typeof matchInput.matchPoints === "number" && Number.isFinite(matchInput.matchPoints) ? matchInput.matchPoints : null,
+      holesRemaining: typeof matchInput.holesRemaining === "number" && Number.isFinite(matchInput.holesRemaining) ? matchInput.holesRemaining : null,
+      matchResultLabel: typeof matchInput.matchResultLabel === "string" ? matchInput.matchResultLabel : "",
+    };
+  };
+
   return {
     id: typeof input.id === "string" && input.id ? input.id : `schedule-${index}`,
     time: typeof input.time === "string" ? input.time : "",
@@ -115,6 +127,10 @@ function normalizeScheduleItem(value: unknown, index: number): OtherCompetitionS
     matchPoints: typeof input.matchPoints === "number" && Number.isFinite(input.matchPoints) ? input.matchPoints : null,
     holesRemaining: typeof input.holesRemaining === "number" && Number.isFinite(input.holesRemaining) ? input.holesRemaining : null,
     matchResultLabel: typeof input.matchResultLabel === "string" ? input.matchResultLabel : "",
+    unitMatchResults:
+      input.unitMatchResults && typeof input.unitMatchResults === "object"
+        ? Object.fromEntries(Object.entries(input.unitMatchResults).map(([key, item]) => [key, normalizeMatchResult(item)]))
+        : {},
     note: typeof input.note === "string" ? input.note : "",
   };
 }

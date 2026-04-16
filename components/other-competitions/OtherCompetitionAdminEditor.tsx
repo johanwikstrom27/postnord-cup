@@ -7,6 +7,7 @@ import type {
   OtherCompetitionResult,
   OtherCompetitionRow,
   OtherCompetitionRound,
+  OtherCompetitionScheduleItemMatchResult,
   OtherCompetitionScoringModel,
   OtherCompetitionScheduleItem,
   OtherCompetitionSchedulePairing,
@@ -189,7 +190,7 @@ function scoringKindOptionsForFormat(format: OtherCompetitionRound["format"]) {
 }
 
 function teamMatchResultLabel(
-  item: Pick<OtherCompetitionScheduleItem, "matchWinnerCompetitorId" | "matchHalved" | "matchPoints" | "holesRemaining">,
+  item: Pick<OtherCompetitionScheduleItemMatchResult, "matchWinnerCompetitorId" | "matchHalved" | "matchPoints" | "holesRemaining">,
   competitorNamesById: Map<string, string>
 ) {
   if (item.matchHalved) return "Delad match";
@@ -200,6 +201,29 @@ function teamMatchResultLabel(
   const holesRemaining = Number(item.holesRemaining ?? 0);
   const margin = matchPoints > 0 ? (holesRemaining > 0 ? `${matchPoints}&${holesRemaining}` : `${matchPoints}up`) : "";
   return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
+}
+
+function normalizeTeamMatchResult(
+  value: Partial<OtherCompetitionScheduleItemMatchResult> | undefined,
+  competitorIds: string[],
+  competitorNamesById: Map<string, string>
+): OtherCompetitionScheduleItemMatchResult {
+  const matchWinnerCompetitorId = competitorIds.includes(value?.matchWinnerCompetitorId ?? "") ? value?.matchWinnerCompetitorId ?? null : null;
+  const matchHalved = competitorIds.length >= 2 ? Boolean(value?.matchHalved) && !matchWinnerCompetitorId : false;
+  const matchPoints =
+    typeof value?.matchPoints === "number" && Number.isFinite(value.matchPoints) && value.matchPoints > 0 ? value.matchPoints : null;
+  const holesRemaining =
+    typeof value?.holesRemaining === "number" && Number.isFinite(value.holesRemaining) && value.holesRemaining >= 0 ? value.holesRemaining : null;
+
+  return {
+    matchWinnerCompetitorId,
+    matchHalved,
+    matchPoints,
+    holesRemaining,
+    matchResultLabel:
+      teamMatchResultLabel({ matchWinnerCompetitorId, matchHalved, matchPoints, holesRemaining }, competitorNamesById) ||
+      (!matchWinnerCompetitorId && !matchHalved ? value?.matchResultLabel ?? "" : ""),
+  };
 }
 
 function unitFormat(unit: { round: OtherCompetitionRound; part: NonNullable<OtherCompetitionRound["parts"]>[number] | null }) {
@@ -794,24 +818,39 @@ export default function OtherCompetitionAdminEditor({
   function normalizeScheduleItemPairings(item: OtherCompetitionScheduleItem) {
     const competitorNamesById = new Map(config.teams.map((team) => [team.id, team.name || teamDisplayName(team, config.players)]));
     const competitorIds = item.competitorIds.map(String).filter(Boolean);
-    const matchWinnerCompetitorId = competitorIds.includes(item.matchWinnerCompetitorId ?? "") ? item.matchWinnerCompetitorId ?? null : null;
-    const matchHalved = competitorIds.length >= 2 ? Boolean(item.matchHalved) && !matchWinnerCompetitorId : false;
-    const matchPoints =
-      typeof item.matchPoints === "number" && Number.isFinite(item.matchPoints) && item.matchPoints > 0 ? item.matchPoints : null;
-    const holesRemaining =
-      typeof item.holesRemaining === "number" && Number.isFinite(item.holesRemaining) && item.holesRemaining >= 0 ? item.holesRemaining : null;
+    const baseMatchResult = normalizeTeamMatchResult(item, competitorIds, competitorNamesById);
+    const unitMatchResults = Object.fromEntries(
+      Object.entries(item.unitMatchResults ?? {}).map(([resultKey, result]) => [resultKey, normalizeTeamMatchResult(result, competitorIds, competitorNamesById)])
+    );
 
     return {
       ...item,
       pairings: (item.pairings ?? []).map(normalizePairingResult),
-      matchWinnerCompetitorId,
-      matchHalved,
-      matchPoints,
-      holesRemaining,
-      matchResultLabel:
-        teamMatchResultLabel({ matchWinnerCompetitorId, matchHalved, matchPoints, holesRemaining }, competitorNamesById) ||
-        (!matchWinnerCompetitorId && !matchHalved ? item.matchResultLabel ?? "" : ""),
+      matchWinnerCompetitorId: baseMatchResult.matchWinnerCompetitorId ?? null,
+      matchHalved: baseMatchResult.matchHalved ?? false,
+      matchPoints: baseMatchResult.matchPoints ?? null,
+      holesRemaining: baseMatchResult.holesRemaining ?? null,
+      matchResultLabel: baseMatchResult.matchResultLabel ?? "",
+      unitMatchResults,
     };
+  }
+
+  function matchResultForItem(item: OtherCompetitionScheduleItem, resultKey: string, round?: OtherCompetitionRound) {
+    if (item.unitMatchResults?.[resultKey]) return normalizeScheduleItemPairings(item).unitMatchResults?.[resultKey] ?? {};
+    if ((round?.parts?.length ?? 0) > 0) {
+      return {
+        matchWinnerCompetitorId: null,
+        matchHalved: false,
+        matchPoints: null,
+        holesRemaining: null,
+        matchResultLabel: "",
+      };
+    }
+    return normalizeTeamMatchResult(
+      item,
+      item.competitorIds.map(String).filter(Boolean),
+      new Map(config.teams.map((team) => [team.id, team.name || teamDisplayName(team, config.players)]))
+    );
   }
 
   function matchSegmentsForResultKey(round: OtherCompetitionRound, resultKey: string) {
@@ -860,6 +899,7 @@ export default function OtherCompetitionAdminEditor({
 
       for (const rawItem of round.schedule) {
         const item = normalizeScheduleItemPairings(rawItem);
+        const matchResult = matchResultForItem(item, resultKey, round);
         const [competitorAId, competitorBId] = item.competitorIds;
         if (!competitorAId || !competitorBId) continue;
         const competitorAResult = resultsByCompetitorId.get(competitorAId);
@@ -867,9 +907,11 @@ export default function OtherCompetitionAdminEditor({
         if (!competitorAResult || !competitorBResult) continue;
         const competitorAName = competitorNamesById.get(competitorAId) ?? competitorAId;
         const competitorBName = competitorNamesById.get(competitorBId) ?? competitorBId;
-        const margin = item.matchPoints ? (item.holesRemaining && item.holesRemaining > 0 ? `${item.matchPoints}&${item.holesRemaining}` : `${item.matchPoints}up`) : "";
+        const margin = matchResult.matchPoints
+          ? (matchResult.holesRemaining && matchResult.holesRemaining > 0 ? `${matchResult.matchPoints}&${matchResult.holesRemaining}` : `${matchResult.matchPoints}up`)
+          : "";
 
-        if (item.matchHalved) {
+        if (matchResult.matchHalved) {
           competitorAResult.points += model.drawPoints;
           competitorBResult.points += model.drawPoints;
           addLabel(competitorAId, `delad mot ${competitorBName}`);
@@ -877,8 +919,8 @@ export default function OtherCompetitionAdminEditor({
           continue;
         }
 
-        if (item.matchWinnerCompetitorId !== competitorAId && item.matchWinnerCompetitorId !== competitorBId) continue;
-        const winnerId = item.matchWinnerCompetitorId;
+        if (matchResult.matchWinnerCompetitorId !== competitorAId && matchResult.matchWinnerCompetitorId !== competitorBId) continue;
+        const winnerId = matchResult.matchWinnerCompetitorId;
         const loserId = winnerId === competitorAId ? competitorBId : competitorAId;
         const winnerResult = resultsByCompetitorId.get(winnerId);
         const loserResult = resultsByCompetitorId.get(loserId);
@@ -1362,6 +1404,7 @@ export default function OtherCompetitionAdminEditor({
       matchPoints: null,
       holesRemaining: null,
       matchResultLabel: "",
+      unitMatchResults: {},
       note: "",
     };
     patchRound(round.id, { schedule: [...round.schedule, item] });
@@ -1471,6 +1514,7 @@ export default function OtherCompetitionAdminEditor({
         matchPoints: null,
         holesRemaining: null,
         matchResultLabel: "",
+        unitMatchResults: {},
         note: "",
       });
     }
@@ -1481,6 +1525,27 @@ export default function OtherCompetitionAdminEditor({
   function patchScheduleItem(round: OtherCompetitionRound, itemId: string, patch: Partial<OtherCompetitionScheduleItem>) {
     patchRound(round.id, {
       schedule: round.schedule.map((item) => (item.id === itemId ? normalizeScheduleItemPairings({ ...item, ...patch }) : item)),
+    });
+  }
+
+  function patchScheduleItemMatchResult(
+    round: OtherCompetitionRound,
+    resultKey: string,
+    itemId: string,
+    patch: Partial<OtherCompetitionScheduleItemMatchResult>
+  ) {
+    patchRound(round.id, {
+      schedule: round.schedule.map((item) => {
+        if (item.id !== itemId) return item;
+        const unitMatchResults = {
+          ...(item.unitMatchResults ?? {}),
+          [resultKey]: {
+            ...(item.unitMatchResults?.[resultKey] ?? {}),
+            ...patch,
+          },
+        };
+        return normalizeScheduleItemPairings({ ...item, unitMatchResults });
+      }),
     });
   }
 
@@ -2701,6 +2766,7 @@ export default function OtherCompetitionAdminEditor({
                     return matchItems.length > 0 ? (
                       matchItems.map((rawItem, itemIndex) => {
                         const item = normalizeScheduleItemPairings(rawItem);
+                        const matchResult = matchResultForItem(item, selectedScoringUnit.resultKey, selectedScoringUnit.round);
                         const [teamAId, teamBId] = item.competitorIds;
                         const teamALabel = teamNamesById.get(teamAId) ?? teamAId;
                         const teamBLabel = teamNamesById.get(teamBId) ?? teamBId;
@@ -2722,11 +2788,11 @@ export default function OtherCompetitionAdminEditor({
                                 <span className="text-xs uppercase tracking-[0.16em] text-white/42">Vinnare</span>
                                 <select
                                   disabled={selectedRoundLocked}
-                                  value={item.matchHalved ? "draw" : item.matchWinnerCompetitorId ?? ""}
+                                  value={matchResult.matchHalved ? "draw" : matchResult.matchWinnerCompetitorId ?? ""}
                                   onChange={(e) => {
                                     const value = e.target.value;
                                     if (!value) {
-                                      patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                      patchScheduleItemMatchResult(selectedScoringUnit.round, selectedScoringUnit.resultKey, item.id, {
                                         matchWinnerCompetitorId: null,
                                         matchHalved: false,
                                         matchPoints: null,
@@ -2736,7 +2802,7 @@ export default function OtherCompetitionAdminEditor({
                                       return;
                                     }
                                     if (value === "draw") {
-                                      patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                      patchScheduleItemMatchResult(selectedScoringUnit.round, selectedScoringUnit.resultKey, item.id, {
                                         matchWinnerCompetitorId: null,
                                         matchHalved: true,
                                         matchPoints: null,
@@ -2744,11 +2810,11 @@ export default function OtherCompetitionAdminEditor({
                                       });
                                       return;
                                     }
-                                    patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                    patchScheduleItemMatchResult(selectedScoringUnit.round, selectedScoringUnit.resultKey, item.id, {
                                       matchWinnerCompetitorId: value,
                                       matchHalved: false,
-                                      matchPoints: item.matchPoints ?? 1,
-                                      holesRemaining: item.holesRemaining ?? 0,
+                                      matchPoints: matchResult.matchPoints ?? 1,
+                                      holesRemaining: matchResult.holesRemaining ?? 0,
                                     });
                                   }}
                                   className={inputClass(selectedRoundLocked)}
@@ -2763,26 +2829,34 @@ export default function OtherCompetitionAdminEditor({
                               <label className="space-y-2">
                                 <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng i matchen</span>
                                 <input
-                                  disabled={selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId}
+                                  disabled={selectedRoundLocked || matchResult.matchHalved || !matchResult.matchWinnerCompetitorId}
                                   type="number"
                                   min={1}
-                                  value={item.matchPoints ?? ""}
-                                  onChange={(e) => patchScheduleItem(selectedScoringUnit.round, item.id, { matchPoints: e.target.value === "" ? null : Number(e.target.value) })}
+                                  value={matchResult.matchPoints ?? ""}
+                                  onChange={(e) =>
+                                    patchScheduleItemMatchResult(selectedScoringUnit.round, selectedScoringUnit.resultKey, item.id, {
+                                      matchPoints: e.target.value === "" ? null : Number(e.target.value),
+                                    })
+                                  }
                                   placeholder="2"
-                                  className={inputClass(selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId)}
+                                  className={inputClass(selectedRoundLocked || matchResult.matchHalved || !matchResult.matchWinnerCompetitorId)}
                                 />
                               </label>
 
                               <label className="space-y-2">
                                 <span className="text-xs uppercase tracking-[0.16em] text-white/42">Hål kvar</span>
                                 <input
-                                  disabled={selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId}
+                                  disabled={selectedRoundLocked || matchResult.matchHalved || !matchResult.matchWinnerCompetitorId}
                                   type="number"
                                   min={0}
-                                  value={item.holesRemaining ?? ""}
-                                  onChange={(e) => patchScheduleItem(selectedScoringUnit.round, item.id, { holesRemaining: e.target.value === "" ? null : Number(e.target.value) })}
+                                  value={matchResult.holesRemaining ?? ""}
+                                  onChange={(e) =>
+                                    patchScheduleItemMatchResult(selectedScoringUnit.round, selectedScoringUnit.resultKey, item.id, {
+                                      holesRemaining: e.target.value === "" ? null : Number(e.target.value),
+                                    })
+                                  }
                                   placeholder="1"
-                                  className={inputClass(selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId)}
+                                  className={inputClass(selectedRoundLocked || matchResult.matchHalved || !matchResult.matchWinnerCompetitorId)}
                                 />
                               </label>
                             </div>
@@ -2790,7 +2864,7 @@ export default function OtherCompetitionAdminEditor({
                             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
                               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
                                 <span className="text-white/45">Resultat:</span>{" "}
-                                <span className="font-semibold text-white">{item.matchResultLabel || "Inget resultat än"}</span>
+                                <span className="font-semibold text-white">{matchResult.matchResultLabel || "Inget resultat än"}</span>
                               </div>
                               <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
                                 Tabellpoäng: vinst {fmtPoints(selectedUnitModel.winPoints)}p · delad {fmtPoints(selectedUnitModel.drawPoints)}p · förlust {fmtPoints(selectedUnitModel.lossPoints)}p

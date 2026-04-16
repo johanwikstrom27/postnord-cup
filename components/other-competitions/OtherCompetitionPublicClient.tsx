@@ -175,6 +175,24 @@ function itemScoreComparedLabels(
     .filter((item): item is { id: string; prefix: string; text: string } => Boolean(item));
 }
 
+function itemStructuredMatchLabels(round: OtherCompetitionRound, item: { matchResultLabel?: string; unitMatchResults?: Record<string, { matchResultLabel?: string }> }, units: ReturnType<typeof scoringUnitsForRound>) {
+  const labels = units
+    .map((unit) => {
+      const text = item.unitMatchResults?.[unit.resultKey]?.matchResultLabel ?? "";
+      if (!text) return null;
+      return {
+        id: unit.resultKey,
+        prefix: units.length > 1 ? (unit.part ? unit.label : "Hela rundan") : "",
+        text,
+      };
+    })
+    .filter((label): label is { id: string; prefix: string; text: string } => Boolean(label));
+
+  if (labels.length > 0) return labels;
+  if (units.length > 1) return [];
+  return item.matchResultLabel ? [{ id: `${round.id}:fallback`, prefix: "", text: item.matchResultLabel }] : [];
+}
+
 function placeLabel(index: number) {
   if (index === 0) return "1:a";
   if (index === 1) return "2:a";
@@ -807,9 +825,14 @@ export default function OtherCompetitionPublicClient({
                                             {label.text}
                                           </div>
                                         ))}
-                                        {itemScoreComparedLabels(competition.config, round, item, units).length === 0 && item.matchResultLabel ? (
-                                          <div className="mt-2 text-sm font-medium text-sky-100/88">{item.matchResultLabel}</div>
-                                        ) : null}
+                                        {itemScoreComparedLabels(competition.config, round, item, units).length === 0
+                                          ? itemStructuredMatchLabels(round, item, units).map((label) => (
+                                              <div key={label.id} className="mt-2 text-sm font-medium text-sky-100/88">
+                                                {label.prefix ? `${label.prefix}: ` : ""}
+                                                {label.text}
+                                              </div>
+                                            ))
+                                          : null}
                                       </>
                                     ) : null}
                                   </div>

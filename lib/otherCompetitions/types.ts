@@ -61,6 +61,14 @@ export type OtherCompetitionSchedulePairing = {
   holesRemaining?: number | null;
 };
 
+export type OtherCompetitionScheduleItemMatchResult = {
+  matchWinnerCompetitorId?: string | null;
+  matchHalved?: boolean;
+  matchPoints?: number | null;
+  holesRemaining?: number | null;
+  matchResultLabel?: string;
+};
+
 export type OtherCompetitionScheduleItem = {
   id: string;
   time: string;
@@ -72,6 +80,7 @@ export type OtherCompetitionScheduleItem = {
   matchPoints?: number | null;
   holesRemaining?: number | null;
   matchResultLabel?: string;
+  unitMatchResults?: Record<string, OtherCompetitionScheduleItemMatchResult>;
   note: string;
 };
 

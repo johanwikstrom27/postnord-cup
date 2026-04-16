@@ -215,7 +215,7 @@ function teamMatchResultLabel(
   const matchPoints = Number(item.matchPoints ?? 0);
   const holesRemaining = Number(item.holesRemaining ?? 0);
   const margin = matchPoints > 0 ? (holesRemaining > 0 ? `${matchPoints}&${holesRemaining}` : `${matchPoints}up`) : "";
-  return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
+  return margin ? `${winnerName} ${margin}` : `${winnerName} vann`;
 }
 
 function normalizeTeamMatchResult(
@@ -853,6 +853,14 @@ export default function OtherCompetitionAdminEditor({
   function matchResultForItem(item: OtherCompetitionScheduleItem, resultKey: string, round?: OtherCompetitionRound) {
     if (item.unitMatchResults?.[resultKey]) return normalizeScheduleItemPairings(item).unitMatchResults?.[resultKey] ?? {};
     if ((round?.parts?.length ?? 0) > 0) {
+      const firstUnitKey = round ? scoringUnitsForRound(round)[0]?.resultKey : null;
+      if (firstUnitKey === resultKey) {
+        return normalizeTeamMatchResult(
+          item,
+          item.competitorIds.map(String).filter(Boolean),
+          new Map(config.teams.map((team) => [team.id, team.name || teamDisplayName(team, config.players)]))
+        );
+      }
       return {
         matchWinnerCompetitorId: null,
         matchHalved: false,

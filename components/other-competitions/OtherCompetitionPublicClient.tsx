@@ -181,8 +181,10 @@ function itemScoreComparedLabels(
 
 function itemStructuredMatchLabels(round: OtherCompetitionRound, item: { matchResultLabel?: string; unitMatchResults?: Record<string, { matchResultLabel?: string }> }, units: ReturnType<typeof scoringUnitsForRound>) {
   const labels = units
-    .map((unit) => {
-      const text = item.unitMatchResults?.[unit.resultKey]?.matchResultLabel ?? "";
+    .map((unit, index) => {
+      const text =
+        item.unitMatchResults?.[unit.resultKey]?.matchResultLabel ??
+        (index === 0 ? item.matchResultLabel ?? "" : "");
       if (!text) return null;
       return {
         id: unit.resultKey,
@@ -193,7 +195,6 @@ function itemStructuredMatchLabels(round: OtherCompetitionRound, item: { matchRe
     .filter((label): label is { id: string; prefix: string; text: string } => Boolean(label));
 
   if (labels.length > 0) return labels;
-  if (units.length > 1) return [];
   return item.matchResultLabel ? [{ id: `${round.id}:fallback`, prefix: "", text: item.matchResultLabel }] : [];
 }
 
@@ -324,6 +325,7 @@ function playersForCompetitor(config: OtherCompetitionConfig, competitor: Compet
 }
 
 function roundPointsFor(row: ReturnType<typeof totalStandings>[number], round: OtherCompetitionRound) {
+  if (!round.locked) return null;
   return scoringUnitsForRound(round).reduce((sum, unit) => sum + (row.roundPoints[unit.resultKey] ?? 0), 0);
 }
 
@@ -699,7 +701,10 @@ export default function OtherCompetitionPublicClient({
                   </div>
                   {rounds.map((round) => (
                     <div key={round.id} className="text-right text-sm font-semibold tabular-nums text-white/82">
-                      {fmtTablePoints(roundPointsFor(row, round))}
+                      {(() => {
+                        const roundPoints = roundPointsFor(row, round);
+                        return roundPoints == null ? "-" : fmtTablePoints(roundPoints);
+                      })()}
                     </div>
                   ))}
                   <div className="text-right text-base font-semibold tabular-nums text-white">

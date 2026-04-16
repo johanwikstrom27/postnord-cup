@@ -179,6 +179,10 @@ export function scoringModelForUnit(unit: ScoringUnit) {
   return unit.part?.scoringModel ?? unit.round.scoringModel;
 }
 
+function placementHigherIsBetter(unit: ScoringUnit) {
+  return (scoringModelForUnit(unit).placementMetric ?? "points") !== "strokes";
+}
+
 export function allScoringUnits(config: OtherCompetitionConfig) {
   return config.rounds.flatMap(scoringUnitsForRound);
 }
@@ -315,6 +319,7 @@ export function applyPlacementScoring(
   results: OtherCompetitionResult[]
 ): OtherCompetitionResult[] {
   const distribution = round.scoringModel.placementPoints;
+  const higherIsBetter = (round.scoringModel.placementMetric ?? "points") !== "strokes";
   const ranked = rankEntries(
     results.map((result) => ({
       competitor: {
@@ -328,7 +333,7 @@ export function applyPlacementScoring(
         teamColor: null,
         teamIcon: null,
       },
-      points: Number(result.rawScore ?? result.points ?? 0),
+      points: higherIsBetter ? Number(result.rawScore ?? result.points ?? 0) : -Number(result.rawScore ?? result.points ?? 0),
       result,
     }))
   );

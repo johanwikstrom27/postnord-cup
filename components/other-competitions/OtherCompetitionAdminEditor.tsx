@@ -7,6 +7,7 @@ import type {
   OtherCompetitionResult,
   OtherCompetitionRow,
   OtherCompetitionRound,
+  OtherCompetitionScoringModel,
   OtherCompetitionScheduleItem,
   OtherCompetitionSchedulePairing,
   OtherCompetitionStatus,
@@ -14,7 +15,7 @@ import type {
   PostNordPersonSnapshot,
 } from "@/lib/otherCompetitions/types";
 import { normalizeConfig, normalizeSlug, statusLabel } from "@/lib/otherCompetitions/data";
-import { FORMAT_OPTIONS, createRound, formatLabel } from "@/lib/otherCompetitions/templates";
+import { FORMAT_OPTIONS, createRound, defaultPlacementMetricForFormat, defaultScoringModel, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
   allScoringUnits,
@@ -89,7 +90,9 @@ function isMatchRound(round: OtherCompetitionRound) {
 }
 
 function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
-  return teamCount > 0 && (round.format === "single_match" || round.format === "switch_match_9");
+  if (teamCount <= 0) return false;
+  if (round.format === "single_match" || round.format === "switch_match_9") return true;
+  return (round.parts ?? []).some((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
 }
 
 function scoringKindLabel(kind: OtherCompetitionRound["scoringModel"]["kind"]) {
@@ -99,10 +102,14 @@ function scoringKindLabel(kind: OtherCompetitionRound["scoringModel"]["kind"]) {
   return "Eget upplägg";
 }
 
-function resultScoreLabel(round: OtherCompetitionRound, format = round.format) {
-  if (format === "stableford") return "Poängbogey totalt";
-  if (format === "stroke_play") return "Slag totalt";
-  if (round.scoringModel.kind === "match") return "Matchresultat";
+function resultScoreLabel(
+  round: OtherCompetitionRound,
+  format = round.format,
+  model: OtherCompetitionScoringModel = round.scoringModel
+) {
+  if (model.kind === "match") return "Matchresultat";
+  if ((model.placementMetric ?? defaultPlacementMetricForFormat(format)) === "strokes") return "Slag totalt";
+  if ((model.placementMetric ?? defaultPlacementMetricForFormat(format)) === "points") return "Poängbogey totalt";
   return "Resultat i spelet";
 }
 
@@ -130,12 +137,53 @@ function buildPairingResultLabel(
   return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
 }
 
+function usesStructuredTeamMatchResults(round: OtherCompetitionRound, model: OtherCompetitionScoringModel) {
+  return round.playMode === "team" && model.kind === "match" && matchPairingSegments(round).length === 1 && round.format !== "single_match";
+}
+
+function usesAnyTeamMatchMode(round: OtherCompetitionRound) {
+  return round.playMode === "team" && (round.scoringModel.kind === "match" || (round.parts ?? []).some((part) => part.scoringModel.kind === "match"));
+}
+
 function usesPlayerBallScores(format: OtherCompetitionRound["format"]) {
   return ["stableford", "stroke_play", "eclectic"].includes(format);
 }
 
+function scoringKindOptionsForFormat(format: OtherCompetitionRound["format"]) {
+  if (format === "greensome") return ["match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+  if (format === "scramble") return ["placement", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+  if (format === "best_ball") return ["placement", "match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+  if (format === "single_match" || format === "switch_match_9" || format === "team_match") return ["match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+  return ["placement", "match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+}
+
+function teamMatchResultLabel(
+  item: Pick<OtherCompetitionScheduleItem, "matchWinnerCompetitorId" | "matchHalved" | "matchPoints" | "holesRemaining">,
+  competitorNamesById: Map<string, string>
+) {
+  if (item.matchHalved) return "Delad match";
+  if (!item.matchWinnerCompetitorId) return "";
+  const winnerName = competitorNamesById.get(item.matchWinnerCompetitorId);
+  if (!winnerName) return "";
+  const matchPoints = Number(item.matchPoints ?? 0);
+  const holesRemaining = Number(item.holesRemaining ?? 0);
+  const margin = matchPoints > 0 ? (holesRemaining > 0 ? `${matchPoints}&${holesRemaining}` : `${matchPoints}up`) : "";
+  return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
+}
+
 function unitFormat(unit: { round: OtherCompetitionRound; part: NonNullable<OtherCompetitionRound["parts"]>[number] | null }) {
   return unit.part?.format ?? unit.round.format;
+}
+
+function matchPairingSegments(round: OtherCompetitionRound): Array<OtherCompetitionSchedulePairing["segment"]> {
+  if (round.format === "switch_match_9") return ["front_9", "back_9"];
+  const matchParts = (round.parts ?? []).filter((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
+  return matchParts.length >= 2 ? ["front_9", "back_9"] : ["front_9"];
+}
+
+function matchSegmentHeading(round: OtherCompetitionRound, segment: OtherCompetitionSchedulePairing["segment"]) {
+  if (matchPairingSegments(round).length < 2) return "Matcher";
+  return segment === "front_9" ? "Matcher hål 1-9" : "Matcher hål 10-18";
 }
 
 function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
@@ -217,13 +265,16 @@ function PlacementPointsEditor({
 
 function ScoringModelEditor({
   model,
+  format,
   disabled,
   onChange,
 }: {
   model: OtherCompetitionRound["scoringModel"];
+  format: OtherCompetitionRound["format"];
   disabled: boolean;
   onChange: (model: OtherCompetitionRound["scoringModel"]) => void;
 }) {
+  const kindOptions = scoringKindOptionsForFormat(format);
   return (
     <div className="grid gap-4">
       <label className="space-y-2">
@@ -234,15 +285,29 @@ function ScoringModelEditor({
           onChange={(e) => onChange({ ...model, kind: e.target.value as OtherCompetitionRound["scoringModel"]["kind"] })}
           className={inputClass(disabled)}
         >
-          <option value="placement">Tabellpoäng efter placering</option>
-          <option value="match">Matchpoäng: vinst / oavgjort / förlust</option>
-          <option value="manual">Manuell tabellpoäng</option>
-          <option value="custom">Eget upplägg</option>
+          {kindOptions.includes("placement") ? <option value="placement">Tabellpoäng efter placering</option> : null}
+          {kindOptions.includes("match") ? <option value="match">Matchpoäng: vinst / oavgjort / förlust</option> : null}
+          {kindOptions.includes("manual") ? <option value="manual">Manuell tabellpoäng</option> : null}
+          {kindOptions.includes("custom") ? <option value="custom">Eget upplägg</option> : null}
         </select>
       </label>
 
       {model.kind === "placement" ? (
         <div className="space-y-2">
+          {(format === "scramble" || format === "stroke_play" || format === "stableford") ? (
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Resultattyp</span>
+              <select
+                disabled={disabled}
+                value={model.placementMetric ?? defaultPlacementMetricForFormat(format)}
+                onChange={(e) => onChange({ ...model, placementMetric: e.target.value === "strokes" ? "strokes" : "points" })}
+                className={inputClass(disabled)}
+              >
+                <option value="points">Poängbogey</option>
+                {(format === "scramble" || format === "stroke_play") ? <option value="strokes">Slag</option> : null}
+              </select>
+            </label>
+          ) : null}
           <div className="text-xs uppercase tracking-[0.18em] text-white/45">Poängfördelning</div>
           <PlacementPointsEditor
             points={model.placementPoints}
@@ -679,16 +744,33 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function normalizeScheduleItemPairings(item: OtherCompetitionScheduleItem) {
+    const competitorNamesById = new Map(config.teams.map((team) => [team.id, team.name || teamDisplayName(team, config.players)]));
+    const competitorIds = item.competitorIds.map(String).filter(Boolean);
+    const matchWinnerCompetitorId = competitorIds.includes(item.matchWinnerCompetitorId ?? "") ? item.matchWinnerCompetitorId ?? null : null;
+    const matchHalved = competitorIds.length >= 2 ? Boolean(item.matchHalved) && !matchWinnerCompetitorId : false;
+    const matchPoints =
+      typeof item.matchPoints === "number" && Number.isFinite(item.matchPoints) && item.matchPoints > 0 ? item.matchPoints : null;
+    const holesRemaining =
+      typeof item.holesRemaining === "number" && Number.isFinite(item.holesRemaining) && item.holesRemaining >= 0 ? item.holesRemaining : null;
+
     return {
       ...item,
       pairings: (item.pairings ?? []).map(normalizePairingResult),
+      matchWinnerCompetitorId,
+      matchHalved,
+      matchPoints,
+      holesRemaining,
+      matchResultLabel:
+        teamMatchResultLabel({ matchWinnerCompetitorId, matchHalved, matchPoints, holesRemaining }, competitorNamesById) ||
+        (!matchWinnerCompetitorId && !matchHalved ? item.matchResultLabel ?? "" : ""),
     };
   }
 
   function matchSegmentsForResultKey(round: OtherCompetitionRound, resultKey: string) {
-    if (round.format !== "switch_match_9") return new Set<OtherCompetitionSchedulePairing["segment"]>(["front_9"]);
+    const pairingSegments = matchPairingSegments(round);
+    if (pairingSegments.length <= 1) return new Set<OtherCompetitionSchedulePairing["segment"]>(["front_9"]);
     const units = scoringUnitsForRound(round);
-    if (units.length <= 1) return new Set<OtherCompetitionSchedulePairing["segment"]>(["front_9", "back_9"]);
+    if (units.length <= 1) return new Set<OtherCompetitionSchedulePairing["segment"]>(pairingSegments);
     const unitIndex = units.findIndex((unit) => unit.resultKey === resultKey);
     return new Set<OtherCompetitionSchedulePairing["segment"]>([unitIndex <= 0 ? "front_9" : "back_9"]);
   }
@@ -703,12 +785,69 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function deriveMatchResultsForResultKey(nextConfig: OtherCompetitionConfig, round: OtherCompetitionRound, resultKey: string) {
-    if (!usesTeamPoolForMatchRound(round, nextConfig.teams.length)) return nextConfig.results[resultKey] ?? [];
-
     const unit = scoringUnitsForRound(round).find((item) => item.resultKey === resultKey);
     if (!unit) return nextConfig.results[resultKey] ?? [];
 
     const model = scoringModelForUnit(unit);
+    if (usesStructuredTeamMatchResults(round, model)) {
+      const competitorNamesById = new Map(competitorsForRound(nextConfig, round).map((competitor) => [competitor.id, competitor.name]));
+      const existing = new Map((nextConfig.results[resultKey] ?? []).map((result) => [result.competitorId, result]));
+      const results = competitorsForRound(nextConfig, round).map((competitor) => ({
+        ...createResult(competitor.id),
+        ...existing.get(competitor.id),
+        competitorId: competitor.id,
+        scoreLabel: "",
+        rawScore: null,
+        playerScores: {},
+        points: 0,
+        winnerOverride: false,
+      }));
+      const resultsByCompetitorId = new Map(results.map((result) => [result.competitorId, result]));
+      const labelsByCompetitorId = new Map<string, string[]>();
+      const addLabel = (competitorId: string, label: string) => {
+        if (!label) return;
+        labelsByCompetitorId.set(competitorId, [...(labelsByCompetitorId.get(competitorId) ?? []), label]);
+      };
+
+      for (const rawItem of round.schedule) {
+        const item = normalizeScheduleItemPairings(rawItem);
+        const [competitorAId, competitorBId] = item.competitorIds;
+        if (!competitorAId || !competitorBId) continue;
+        const competitorAResult = resultsByCompetitorId.get(competitorAId);
+        const competitorBResult = resultsByCompetitorId.get(competitorBId);
+        if (!competitorAResult || !competitorBResult) continue;
+        const competitorAName = competitorNamesById.get(competitorAId) ?? competitorAId;
+        const competitorBName = competitorNamesById.get(competitorBId) ?? competitorBId;
+        const margin = item.matchPoints ? (item.holesRemaining && item.holesRemaining > 0 ? `${item.matchPoints}&${item.holesRemaining}` : `${item.matchPoints}up`) : "";
+
+        if (item.matchHalved) {
+          competitorAResult.points += model.drawPoints;
+          competitorBResult.points += model.drawPoints;
+          addLabel(competitorAId, `delad mot ${competitorBName}`);
+          addLabel(competitorBId, `delad mot ${competitorAName}`);
+          continue;
+        }
+
+        if (item.matchWinnerCompetitorId !== competitorAId && item.matchWinnerCompetitorId !== competitorBId) continue;
+        const winnerId = item.matchWinnerCompetitorId;
+        const loserId = winnerId === competitorAId ? competitorBId : competitorAId;
+        const winnerResult = resultsByCompetitorId.get(winnerId);
+        const loserResult = resultsByCompetitorId.get(loserId);
+        if (!winnerResult || !loserResult) continue;
+        winnerResult.points += model.winPoints;
+        loserResult.points += model.lossPoints;
+        addLabel(winnerId, `v mot ${competitorNamesById.get(loserId) ?? loserId}${margin ? ` ${margin}` : ""}`);
+        addLabel(loserId, `f mot ${competitorNamesById.get(winnerId) ?? winnerId}${margin ? ` ${margin}` : ""}`);
+      }
+
+      return results.map((result) => ({
+        ...result,
+        scoreLabel: (labelsByCompetitorId.get(result.competitorId) ?? []).join(", "),
+      }));
+    }
+
+    if (!usesTeamPoolForMatchRound(round, nextConfig.teams.length)) return nextConfig.results[resultKey] ?? [];
+
     const playerNamesById = new Map(nextConfig.players.map((player) => [player.id, player.name]));
     const segments = matchSegmentsForResultKey(round, resultKey);
     const existing = new Map((nextConfig.results[resultKey] ?? []).map((result) => [result.competitorId, result]));
@@ -951,12 +1090,19 @@ export default function OtherCompetitionAdminEditor({
     return values.reduce((sum, value) => sum + value, 0);
   }
 
+  function comparableRankingScore(unit: NonNullable<typeof selectedScoringUnit>, result: OtherCompetitionResult) {
+    const score = rankingScore(result);
+    if (score === null) return null;
+    const metric = scoringModelForUnit(unit).placementMetric ?? defaultPlacementMetricForFormat(unitFormat(unit));
+    return metric === "strokes" ? -score : score;
+  }
+
   function applyPlacementPointsToResults(unit: NonNullable<typeof selectedScoringUnit>, results: OtherCompetitionResult[]) {
     if (scoringModelForUnit(unit).kind !== "placement") return results;
 
     const competitors = new Map(competitorsForRound(config, unit.round).map((competitor) => [competitor.id, competitor]));
     const scoredRows = results
-      .map((result) => ({ result, score: rankingScore(result) }))
+      .map((result) => ({ result, score: comparableRankingScore(unit, result) }))
       .filter((row): row is { result: OtherCompetitionResult; score: number } => row.score !== null);
     const topScore = scoredRows.length > 1 ? Math.max(...scoredRows.map((row) => row.score)) : null;
     const playoffIds =
@@ -969,7 +1115,7 @@ export default function OtherCompetitionAdminEditor({
         : results.map((result) => ({ ...result, winnerOverride: false }));
     const ranked = rankEntries(
       cleanedResults
-        .map((result) => ({ result, score: rankingScore(result) }))
+        .map((result) => ({ result, score: comparableRankingScore(unit, result) }))
         .filter((row): row is { result: OtherCompetitionResult; score: number } => row.score !== null)
         .map(({ result, score }) => ({
           competitor: competitors.get(result.competitorId) ?? {
@@ -1036,7 +1182,7 @@ export default function OtherCompetitionAdminEditor({
 
   function firstPlaceTieIds(unit: NonNullable<typeof selectedScoringUnit>, results: OtherCompetitionResult[]) {
     const scored = results
-      .map((result) => ({ id: result.competitorId, score: rankingScore(result) }))
+      .map((result) => ({ id: result.competitorId, score: comparableRankingScore(unit, result) }))
       .filter((row): row is { id: string; score: number } => row.score !== null);
     if (scored.length < 2) return new Set<string>();
     const topScore = Math.max(...scored.map((row) => row.score));
@@ -1063,6 +1209,11 @@ export default function OtherCompetitionAdminEditor({
       title: `${itemLabel} ${round.schedule.length + 1}`,
       competitorIds: [],
       pairings: [],
+      matchWinnerCompetitorId: null,
+      matchHalved: false,
+      matchPoints: null,
+      holesRemaining: null,
+      matchResultLabel: "",
       note: "",
     };
     patchRound(round.id, { schedule: [...round.schedule, item] });
@@ -1070,7 +1221,7 @@ export default function OtherCompetitionAdminEditor({
 
   function defaultMatchPairings(round: OtherCompetitionRound, competitorIds: string[]) {
     const pairings: OtherCompetitionSchedulePairing[] = [];
-    const includeBackNine = round.format === "switch_match_9";
+    const includeBackNine = matchPairingSegments(round).length > 1;
 
     if (competitorIds.every((id) => config.teams.some((team) => team.id === id))) {
       for (let index = 0; index < competitorIds.length; index += 2) {
@@ -1151,7 +1302,7 @@ export default function OtherCompetitionAdminEditor({
   function generateSchedule(round: OtherCompetitionRound) {
     if (isRoundLocked(round)) return;
     const competitors = scheduleCompetitorsForRound(round);
-    const defaultPerBall = usesTeamPoolForMatchRound(round, config.teams.length) ? 2 : 4;
+    const defaultPerBall = usesTeamPoolForMatchRound(round, config.teams.length) || usesAnyTeamMatchMode(round) ? 2 : 4;
     const ballsCount = round.ballsCount > 0 ? round.ballsCount : Math.ceil(competitors.length / defaultPerBall);
     const perBall = Math.max(1, Math.ceil(competitors.length / Math.max(1, ballsCount)));
     const schedule: OtherCompetitionScheduleItem[] = [];
@@ -1167,6 +1318,11 @@ export default function OtherCompetitionAdminEditor({
           usesTeamPoolForMatchRound(round, config.teams.length)
             ? defaultMatchPairings(round, competitors.slice(i, i + perBall).map((competitor) => competitor.id))
             : [],
+        matchWinnerCompetitorId: null,
+        matchHalved: false,
+        matchPoints: null,
+        holesRemaining: null,
+        matchResultLabel: "",
         note: "",
       });
     }
@@ -1176,7 +1332,7 @@ export default function OtherCompetitionAdminEditor({
 
   function patchScheduleItem(round: OtherCompetitionRound, itemId: string, patch: Partial<OtherCompetitionScheduleItem>) {
     patchRound(round.id, {
-      schedule: round.schedule.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+      schedule: round.schedule.map((item) => (item.id === itemId ? normalizeScheduleItemPairings({ ...item, ...patch }) : item)),
     });
   }
 
@@ -1722,8 +1878,8 @@ export default function OtherCompetitionAdminEditor({
             const roundLocked = isRoundLocked(round);
             const usesTeamPool = usesTeamPoolForMatchRound(round, config.teams.length);
             const poolLabel = usesTeamPool ? "Lagpool" : "Spelarpool";
-            const pairingSegments: Array<OtherCompetitionSchedulePairing["segment"]> =
-              round.format === "switch_match_9" ? ["front_9", "back_9"] : ["front_9"];
+            const pairingSegments = matchPairingSegments(round);
+            const hasRoundParts = (round.parts ?? []).length > 0;
             return (
               <div key={round.id} className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
                 <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1775,7 +1931,10 @@ export default function OtherCompetitionAdminEditor({
                           patchRound(round.id, {
                             format: e.target.value as OtherCompetitionRound["format"],
                             playMode: option?.defaultMode ?? round.playMode,
-                            scoringModel: { ...round.scoringModel, kind: option?.scoringKind ?? round.scoringModel.kind },
+                            scoringModel: defaultScoringModel(
+                              e.target.value === "greensome" ? "match" : option?.scoringKind ?? round.scoringModel.kind,
+                              defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"])
+                            ),
                           });
                         }}
                         className={inputClass(roundLocked)}
@@ -1863,10 +2022,10 @@ export default function OtherCompetitionAdminEditor({
                                   const option = FORMAT_OPTIONS.find((item) => item.value === e.target.value);
                                   patchRoundPart(round, part.id, {
                                     format: e.target.value as OtherCompetitionRound["format"],
-                                    scoringModel: {
-                                      ...part.scoringModel,
-                                      kind: option?.scoringKind ?? part.scoringModel.kind,
-                                    },
+                                    scoringModel: defaultScoringModel(
+                                      e.target.value === "greensome" ? "match" : option?.scoringKind ?? part.scoringModel.kind,
+                                      defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"])
+                                    ),
                                   });
                                 }}
                                 className={inputClass(roundLocked)}
@@ -1892,6 +2051,7 @@ export default function OtherCompetitionAdminEditor({
                           <div className="mt-3">
                             <ScoringModelEditor
                               model={part.scoringModel}
+                              format={part.format ?? round.format}
                               disabled={roundLocked}
                               onChange={(scoringModel) => patchRoundPart(round, part.id, { scoringModel })}
                             />
@@ -1902,17 +2062,27 @@ export default function OtherCompetitionAdminEditor({
                   )}
                 </div>
 
-                <div className="mt-4 rounded-[20px] border border-sky-300/15 bg-sky-400/10 p-4">
+                <div
+                  className={[
+                    "mt-4 rounded-[20px] p-4",
+                    hasRoundParts ? "border border-white/10 bg-white/[0.03] opacity-60" : "border border-sky-300/15 bg-sky-400/10",
+                  ].join(" ")}
+                >
                   <div>
-                    <div className="text-xs uppercase tracking-[0.22em] text-sky-100/70">3. Tabellpoäng och regler för hela rundan</div>
-                    <div className="mt-1 text-sm text-sky-100/70">
-                      Här styr du hur resultatet i rundan omvandlas till tävlingens tabellpoäng.
+                    <div className={`text-xs uppercase tracking-[0.22em] ${hasRoundParts ? "text-white/45" : "text-sky-100/70"}`}>
+                      3. Tabellpoäng och regler för hela rundan
+                    </div>
+                    <div className={`mt-1 text-sm ${hasRoundParts ? "text-white/55" : "text-sky-100/70"}`}>
+                      {hasRoundParts
+                        ? "Inaktiv när rundan är uppdelad i delar. Styr tabellpoäng och regler per del ovan."
+                        : "Här styr du hur resultatet i rundan omvandlas till tävlingens tabellpoäng."}
                     </div>
                   </div>
                   <div className="mt-4">
                     <ScoringModelEditor
                       model={round.scoringModel}
-                      disabled={roundLocked}
+                      format={round.format}
+                      disabled={roundLocked || hasRoundParts}
                       onChange={(scoringModel) => patchRound(round.id, { scoringModel })}
                     />
                   </div>
@@ -2020,7 +2190,7 @@ export default function OtherCompetitionAdminEditor({
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">
-                                {round.format === "switch_match_9" ? "Parningar 9 + 9" : "Singelmatcher"}
+                                {pairingSegments.length > 1 ? "Parningar 9 + 9" : "Singelmatcher"}
                               </div>
                               <div className="mt-1 text-sm text-sky-100/65">
                                 Välj två lag i bollen och ändra sedan vilka spelare som möter varandra.
@@ -2039,7 +2209,7 @@ export default function OtherCompetitionAdminEditor({
                             <div key={segment} className="mt-3 grid gap-2">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="text-sm font-semibold">
-                                  {round.format === "switch_match_9" ? segmentLabel(segment) : "Matcher"}
+                                  {matchSegmentHeading(round, segment)}
                                 </div>
                                 <button type="button" disabled={roundLocked} onClick={() => addSchedulePairing(round, item, segment)} className={buttonClass()}>
                                   Lägg till match
@@ -2160,8 +2330,10 @@ export default function OtherCompetitionAdminEditor({
               <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
                 {usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)
                   ? "Matchresultat matas in här per singelmatch. Välj vinnare, segermarginal och hål kvar så uppdateras schemat och tabellpoängen räknas automatiskt."
+                  : usesStructuredTeamMatchResults(selectedScoringUnit.round, scoringModelForUnit(selectedScoringUnit))
+                  ? "Matchresultat matas in här per boll. Välj vinnare, segermarginal och hål kvar så räknas lagens tabellpoäng automatiskt."
                   : selectedScoringUnit.round.playMode === "team"
-                  ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
+                  ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format, scoringModelForUnit(selectedScoringUnit)).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
                 Uppdelade 9-hålsdelar matas in var för sig.
               </div>
@@ -2169,9 +2341,10 @@ export default function OtherCompetitionAdminEditor({
                 {(() => {
                   const unitResults = ensureUnitResults(selectedScoringUnit);
                   const playoffIds = firstPlaceTieIds(selectedScoringUnit, unitResults);
+                  const selectedUnitModel = scoringModelForUnit(selectedScoringUnit);
                   if (usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)) {
                     const matchRows = pairingsForResultKey(selectedScoringUnit.round, selectedScoringUnit.resultKey);
-                    const model = scoringModelForUnit(selectedScoringUnit);
+                    const model = selectedUnitModel;
 
                     return matchRows.length > 0 ? (
                       matchRows.map(({ item, itemIndex, pairing }) => {
@@ -2186,7 +2359,7 @@ export default function OtherCompetitionAdminEditor({
                               <div>
                                 <div className="text-xs uppercase tracking-[0.16em] text-white/42">
                                   Boll {itemIndex + 1}
-                                  {selectedScoringUnit.round.format === "switch_match_9" ? ` · ${segmentLabel(pairing.segment)}` : ""}
+                                  {matchPairingSegments(selectedScoringUnit.round).length > 1 ? ` · ${segmentLabel(pairing.segment)}` : ""}
                                 </div>
                                 <div className="mt-1 font-semibold">{matchupLabel}</div>
                               </div>
@@ -2292,9 +2465,121 @@ export default function OtherCompetitionAdminEditor({
                     );
                   }
 
+                  if (usesStructuredTeamMatchResults(selectedScoringUnit.round, selectedUnitModel)) {
+                    const teamNamesById = new Map(competitorsForRound(config, selectedScoringUnit.round).map((competitor) => [competitor.id, competitor.name]));
+                    const matchItems = selectedScoringUnit.round.schedule.filter((item) => item.competitorIds.length >= 2);
+
+                    return matchItems.length > 0 ? (
+                      matchItems.map((rawItem, itemIndex) => {
+                        const item = normalizeScheduleItemPairings(rawItem);
+                        const [teamAId, teamBId] = item.competitorIds;
+                        const teamALabel = teamNamesById.get(teamAId) ?? teamAId;
+                        const teamBLabel = teamNamesById.get(teamBId) ?? teamBId;
+
+                        return (
+                          <div key={item.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <div className="text-xs uppercase tracking-[0.16em] text-white/42">Boll {itemIndex + 1}</div>
+                                <div className="mt-1 font-semibold">{teamALabel} vs {teamBLabel}</div>
+                              </div>
+                              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                                {item.time || "--"}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]">
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Vinnare</span>
+                                <select
+                                  disabled={selectedRoundLocked}
+                                  value={item.matchHalved ? "draw" : item.matchWinnerCompetitorId ?? ""}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (!value) {
+                                      patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                        matchWinnerCompetitorId: null,
+                                        matchHalved: false,
+                                        matchPoints: null,
+                                        holesRemaining: null,
+                                        matchResultLabel: "",
+                                      });
+                                      return;
+                                    }
+                                    if (value === "draw") {
+                                      patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                        matchWinnerCompetitorId: null,
+                                        matchHalved: true,
+                                        matchPoints: null,
+                                        holesRemaining: null,
+                                      });
+                                      return;
+                                    }
+                                    patchScheduleItem(selectedScoringUnit.round, item.id, {
+                                      matchWinnerCompetitorId: value,
+                                      matchHalved: false,
+                                      matchPoints: item.matchPoints ?? 1,
+                                      holesRemaining: item.holesRemaining ?? 0,
+                                    });
+                                  }}
+                                  className={inputClass(selectedRoundLocked)}
+                                >
+                                  <option value="">Ej spelad</option>
+                                  <option value={teamAId}>{teamALabel}</option>
+                                  <option value={teamBId}>{teamBLabel}</option>
+                                  <option value="draw">Delad</option>
+                                </select>
+                              </label>
+
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng i matchen</span>
+                                <input
+                                  disabled={selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId}
+                                  type="number"
+                                  min={1}
+                                  value={item.matchPoints ?? ""}
+                                  onChange={(e) => patchScheduleItem(selectedScoringUnit.round, item.id, { matchPoints: e.target.value === "" ? null : Number(e.target.value) })}
+                                  placeholder="2"
+                                  className={inputClass(selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId)}
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Hål kvar</span>
+                                <input
+                                  disabled={selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId}
+                                  type="number"
+                                  min={0}
+                                  value={item.holesRemaining ?? ""}
+                                  onChange={(e) => patchScheduleItem(selectedScoringUnit.round, item.id, { holesRemaining: e.target.value === "" ? null : Number(e.target.value) })}
+                                  placeholder="1"
+                                  className={inputClass(selectedRoundLocked || item.matchHalved || !item.matchWinnerCompetitorId)}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
+                                <span className="text-white/45">Resultat:</span>{" "}
+                                <span className="font-semibold text-white">{item.matchResultLabel || "Inget resultat än"}</span>
+                              </div>
+                              <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
+                                Tabellpoäng: vinst {fmtPoints(selectedUnitModel.winPoints)}p · delad {fmtPoints(selectedUnitModel.drawPoints)}p · förlust {fmtPoints(selectedUnitModel.lossPoints)}p
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/52">
+                        Inga matcher att rapportera ännu. Lägg först upp bollar i spelschemat.
+                      </div>
+                    );
+                  }
+
                   return competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
                   const result = unitResults.find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
-                  const model = scoringModelForUnit(selectedScoringUnit);
+                  const model = selectedUnitModel;
                   const format = unitFormat(selectedScoringUnit);
                   const members = competitor.type === "team" ? teamMembers(competitor.id) : [];
                   const usePlayerScores = model.kind === "placement" && competitor.type === "team" && usesPlayerBallScores(format);
@@ -2334,7 +2619,7 @@ export default function OtherCompetitionAdminEditor({
                             />
                           </label>
                           <label className="space-y-2">
-                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format)}</span>
+                            <span className="text-xs uppercase tracking-[0.16em] text-white/42">{resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format, model)}</span>
                             <input
                               disabled={selectedRoundLocked}
                               type="number"

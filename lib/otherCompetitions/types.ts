@@ -39,6 +39,7 @@ export type OtherCompetitionFormat =
 
 export type OtherCompetitionScoringModel = {
   kind: "placement" | "match" | "manual" | "custom";
+  placementMetric?: "points" | "strokes";
   placementPoints: number[];
   winPoints: number;
   drawPoints: number;
@@ -65,6 +66,11 @@ export type OtherCompetitionScheduleItem = {
   title: string;
   competitorIds: string[];
   pairings?: OtherCompetitionSchedulePairing[];
+  matchWinnerCompetitorId?: string | null;
+  matchHalved?: boolean;
+  matchPoints?: number | null;
+  holesRemaining?: number | null;
+  matchResultLabel?: string;
   note: string;
 };
 

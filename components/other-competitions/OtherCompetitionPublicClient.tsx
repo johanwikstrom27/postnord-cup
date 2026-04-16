@@ -181,11 +181,24 @@ function roundHolesSummary(round: OtherCompetitionRound) {
 }
 
 function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
-  return teamCount > 0 && (round.format === "single_match" || round.format === "switch_match_9");
+  if (teamCount <= 0) return false;
+  if (round.format === "single_match" || round.format === "switch_match_9") return true;
+  return (round.parts ?? []).some((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
 }
 
 function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
   return segment === "front_9" ? "Första 9" : "Bakre 9";
+}
+
+function matchPairingSegments(round: OtherCompetitionRound): Array<OtherCompetitionSchedulePairing["segment"]> {
+  if (round.format === "switch_match_9") return ["front_9", "back_9"];
+  const matchParts = (round.parts ?? []).filter((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
+  return matchParts.length >= 2 ? ["front_9", "back_9"] : ["front_9"];
+}
+
+function matchSegmentHeading(round: OtherCompetitionRound, segment: OtherCompetitionSchedulePairing["segment"]) {
+  if (matchPairingSegments(round).length < 2) return "Matcher";
+  return segment === "front_9" ? "Matcher hål 1-9" : "Matcher hål 10-18";
 }
 
 function scheduleItemLabel(index: number) {
@@ -504,7 +517,7 @@ export default function OtherCompetitionPublicClient({
 
   return (
     <main className="space-y-5">
-      <section className="relative -mx-4 -mt-6 overflow-hidden bg-black/35 md:mx-0 md:mt-0 md:rounded-[28px] md:border md:border-white/10">
+      <section className="relative -mx-4 -mt-24 overflow-hidden bg-black/35 md:mx-0 md:-mt-28 md:rounded-[28px] md:border md:border-white/10">
         <div className="h-[330px] md:h-[380px]">
           {competition.header_image_url || competition.card_image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -729,6 +742,9 @@ export default function OtherCompetitionPublicClient({
                                         })}
                                       </div>
                                     ) : null}
+                                    {!usesTeamPoolForMatchRound(round, competition.config.teams.length) && item.matchResultLabel ? (
+                                      <div className="mt-2 text-sm font-medium text-sky-100/88">{item.matchResultLabel}</div>
+                                    ) : null}
                                   </div>
                                   <div className="shrink-0 text-sm font-semibold tabular-nums text-white/82">
                                     {item.time || "--"}
@@ -736,17 +752,13 @@ export default function OtherCompetitionPublicClient({
                                 </div>
                                 {usesTeamPoolForMatchRound(round, competition.config.teams.length) && (item.pairings ?? []).length > 0 ? (
                                   <div className="mt-3 grid gap-3 border-t border-white/10 pt-3">
-                                    {(round.format === "switch_match_9" ? (["front_9", "back_9"] as const) : (["front_9"] as const)).map((segment) => {
+                                    {matchPairingSegments(round).map((segment) => {
                                       const pairings = (item.pairings ?? []).filter((pairing) => pairing.segment === segment);
                                       if (pairings.length === 0) return null;
                                       return (
                                         <div key={segment} className="grid gap-2">
                                           <div className="text-xs uppercase tracking-[0.16em] text-white/42">
-                                            {round.format === "switch_match_9"
-                                              ? segment === "front_9"
-                                                ? "Matcher hål 1-9"
-                                                : "Matcher hål 10-18"
-                                              : "Matcher"}
+                                            {matchSegmentHeading(round, segment)}
                                           </div>
                                           {pairings.map((pairing) => (
                                             <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/82">

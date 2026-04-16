@@ -30,9 +30,18 @@ export function formatLabel(format: OtherCompetitionFormat, customName?: string)
   return FORMAT_OPTIONS.find((item) => item.value === format)?.label ?? format;
 }
 
-export function defaultScoringModel(kind: OtherCompetitionScoringModel["kind"] = "placement"): OtherCompetitionScoringModel {
+export function defaultPlacementMetricForFormat(format: OtherCompetitionFormat) {
+  if (format === "stroke_play") return "strokes" as const;
+  return "points" as const;
+}
+
+export function defaultScoringModel(
+  kind: OtherCompetitionScoringModel["kind"] = "placement",
+  placementMetric: "points" | "strokes" = "points"
+): OtherCompetitionScoringModel {
   return {
     kind,
+    placementMetric,
     placementPoints: kind === "match" ? [] : [6, 5, 4, 3, 2, 1],
     winPoints: 2,
     drawPoints: 1,
@@ -45,6 +54,7 @@ export function defaultScoringModel(kind: OtherCompetitionScoringModel["kind"] =
 
 export function createRound(format: OtherCompetitionFormat, order: number): OtherCompetitionRound {
   const option = FORMAT_OPTIONS.find((item) => item.value === format) ?? FORMAT_OPTIONS[0];
+  const scoringKind = format === "greensome" ? "match" : option.scoringKind;
 
   return {
     id: crypto.randomUUID(),
@@ -55,7 +65,7 @@ export function createRound(format: OtherCompetitionFormat, order: number): Othe
     holes: 18,
     playMode: option.defaultMode,
     ballsCount: 0,
-    scoringModel: defaultScoringModel(option.scoringKind),
+    scoringModel: defaultScoringModel(scoringKind, defaultPlacementMetricForFormat(format)),
     parts: [],
     schedule: [],
     locked: false,

@@ -57,6 +57,7 @@ function normalizeScoringModel(value: unknown): OtherCompetitionScoringModel {
   const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionScoringModel>) : {};
   return {
     kind: isScoringKind(input.kind) ? input.kind : "placement",
+    placementMetric: input.placementMetric === "strokes" ? "strokes" : "points",
     placementPoints: Array.isArray(input.placementPoints) ? input.placementPoints.filter((item) => Number.isFinite(item)) : [6, 5, 4, 3, 2, 1],
     winPoints: Number.isFinite(input.winPoints) ? Number(input.winPoints) : 2,
     drawPoints: Number.isFinite(input.drawPoints) ? Number(input.drawPoints) : 1,
@@ -102,6 +103,11 @@ function normalizeScheduleItem(value: unknown, index: number): OtherCompetitionS
     title: typeof input.title === "string" && input.title ? input.title : `Boll ${index + 1}`,
     competitorIds: Array.isArray(input.competitorIds) ? input.competitorIds.map(String).filter(Boolean) : [],
     pairings: Array.isArray(input.pairings) ? input.pairings.map(normalizeSchedulePairing) : [],
+    matchWinnerCompetitorId: typeof input.matchWinnerCompetitorId === "string" ? input.matchWinnerCompetitorId : null,
+    matchHalved: Boolean(input.matchHalved),
+    matchPoints: typeof input.matchPoints === "number" && Number.isFinite(input.matchPoints) ? input.matchPoints : null,
+    holesRemaining: typeof input.holesRemaining === "number" && Number.isFinite(input.holesRemaining) ? input.holesRemaining : null,
+    matchResultLabel: typeof input.matchResultLabel === "string" ? input.matchResultLabel : "",
     note: typeof input.note === "string" ? input.note : "",
   };
 }

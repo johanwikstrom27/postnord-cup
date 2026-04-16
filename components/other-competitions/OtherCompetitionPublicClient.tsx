@@ -731,7 +731,6 @@ function FinishedPodium({
             { visualPlace: 1, row: topThree[0] ?? null },
             { visualPlace: 3, row: topThree[2] ?? null },
           ].map(({ visualPlace, row }) => {
-
             if (!row) {
               return (
                 <div
@@ -742,6 +741,7 @@ function FinishedPodium({
             }
 
             const players = playersForCompetitor(competition.config, row.competitor);
+            const displayPlace = Math.min(Math.max(row.placement ?? visualPlace, 1), 3);
 
             return (
               <div key={`${row.competitor.id}-${visualPlace}`} className="min-w-0">
@@ -749,7 +749,7 @@ function FinishedPodium({
                   <div className="mb-4 flex min-h-[118px] flex-col items-center justify-end">
                     <div
                       className={
-                        visualPlace === 1
+                        displayPlace === 1
                           ? "rounded-full bg-[radial-gradient(circle,rgba(250,214,110,0.30)_0%,rgba(250,214,110,0.08)_55%,transparent_75%)] p-[6px] shadow-[0_0_40px_rgba(245,204,96,0.35)]"
                           : ""
                       }
@@ -758,7 +758,7 @@ function FinishedPodium({
                         players={players}
                         fallbackName={row.competitor.name}
                         fallbackAvatar={row.competitor.avatarUrl}
-                        placing={visualPlace}
+                        placing={displayPlace}
                       />
                     </div>
 
@@ -773,10 +773,10 @@ function FinishedPodium({
                   </div>
 
                   <div
-                    className={`flex w-full items-start justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pt-5 ${podiumHeight(visualPlace)} ${podiumTone(visualPlace)}`}
+                    className={`flex w-full items-start justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pt-5 ${podiumHeight(displayPlace)} ${podiumTone(displayPlace)}`}
                   >
-                    <div className={visualPlace === 1 ? "" : "pt-2"}>
-                      {podiumSymbol(visualPlace)}
+                    <div className={displayPlace === 1 ? "" : "pt-2"}>
+                      {podiumSymbol(displayPlace)}
                     </div>
                   </div>
                 </div>

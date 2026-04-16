@@ -112,7 +112,7 @@ function earliestStartTime(round: OtherCompetitionRound) {
 
 function scoringSummary(model: OtherCompetitionScoringModel) {
   if (model.kind === "placement" && model.placementPoints.length) {
-    return "Tabellpoäng efter placering";
+    return "Poäng utifrån tabellplacering";
   }
   if (model.kind === "match") return `Match: ${model.winPoints}-${model.drawPoints}-${model.lossPoints}`;
   if (model.kind === "manual") return "Manuell tabellpoäng";
@@ -378,9 +378,9 @@ function formatRoundDate(value: string) {
 }
 
 function podiumHeight(placing: number) {
-  if (placing === 1) return "h-32 sm:h-36";
-  if (placing === 2) return "h-24 sm:h-28";
-  return "h-20 sm:h-24";
+  if (placing === 1) return "h-40 sm:h-48";
+  if (placing === 2) return "h-32 sm:h-40";
+  return "h-24 sm:h-32";
 }
 
 function podiumTone(placing: number) {
@@ -390,12 +390,7 @@ function podiumTone(placing: number) {
 }
 
 function podiumSymbol(placing: number) {
-  if (placing === 1) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src="/icons/final-1.png" alt="Pokalen" className="h-24 w-24 object-contain sm:h-28 sm:w-28" />
-    );
-  }
+  if (placing === 1) return <span className="text-5xl leading-none sm:text-6xl">🥇</span>;
   if (placing === 2) return <span className="text-4xl leading-none sm:text-5xl">🥈</span>;
   return <span className="text-4xl leading-none sm:text-5xl">🥉</span>;
 }
@@ -489,9 +484,11 @@ function FinishedPodium({
         </div>
 
         <div className="mt-7 grid grid-cols-3 items-end gap-2 sm:gap-4 lg:gap-6">
-          {[1, 0, 2].map((index) => {
-            const row = topThree[index] ?? null;
-            const visualPlace = index === 0 ? 2 : index === 1 ? 1 : 3;
+          {[
+            { visualPlace: 2, row: topThree[1] ?? null },
+            { visualPlace: 1, row: topThree[0] ?? null },
+            { visualPlace: 3, row: topThree[2] ?? null },
+          ].map(({ visualPlace, row }) => {
 
             if (!row) {
               return (
@@ -506,37 +503,39 @@ function FinishedPodium({
 
             return (
               <div key={`${row.competitor.id}-${visualPlace}`} className="min-w-0">
-                <div className="flex min-h-[220px] flex-col items-center px-1 text-center sm:px-3">
-                  <div
-                    className={
-                      visualPlace === 1
-                        ? "rounded-full bg-[radial-gradient(circle,rgba(250,214,110,0.30)_0%,rgba(250,214,110,0.08)_55%,transparent_75%)] p-[6px] shadow-[0_0_40px_rgba(245,204,96,0.35)]"
-                        : ""
-                    }
-                  >
-                    <PodiumAvatars
-                      players={players}
-                      fallbackName={row.competitor.name}
-                      fallbackAvatar={row.competitor.avatarUrl}
-                      placing={visualPlace}
-                    />
+                <div className="flex h-[340px] flex-col justify-end px-1 text-center sm:h-[390px] sm:px-3">
+                  <div className="mb-4 flex min-h-[118px] flex-col items-center justify-end">
+                    <div
+                      className={
+                        visualPlace === 1
+                          ? "rounded-full bg-[radial-gradient(circle,rgba(250,214,110,0.30)_0%,rgba(250,214,110,0.08)_55%,transparent_75%)] p-[6px] shadow-[0_0_40px_rgba(245,204,96,0.35)]"
+                          : ""
+                      }
+                    >
+                      <PodiumAvatars
+                        players={players}
+                        fallbackName={row.competitor.name}
+                        fallbackAvatar={row.competitor.avatarUrl}
+                        placing={visualPlace}
+                      />
+                    </div>
+
+                    <div className="mt-3 min-w-0">
+                      <div className="text-xs font-semibold leading-tight text-white break-words sm:text-sm">
+                        {row.competitor.name}
+                      </div>
+                      <div className="mt-1 text-[10px] leading-tight text-white/60 sm:text-[11px]">
+                        Plats {row.placement ?? visualPlace} · {fmtTablePoints(row.total)}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-3 min-w-0">
-                    <div className="text-xs font-semibold leading-tight text-white break-words sm:text-sm">
-                      {row.competitor.name}
-                    </div>
-                    <div className="mt-1 text-[10px] leading-tight text-white/60 sm:text-[11px]">
-                      Plats {row.placement ?? visualPlace} · {fmtTablePoints(row.total)}
-                    </div>
-                  </div>
-
                   <div
-                    className={`mt-4 flex w-full justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pb-4 pt-5 ${
-                      visualPlace === 1 ? "items-center" : "items-start"
-                    } ${podiumHeight(visualPlace)} ${podiumTone(visualPlace)}`}
+                    className={`flex w-full items-start justify-center rounded-t-[24px] border border-b-0 bg-gradient-to-b px-2 pt-5 ${podiumHeight(visualPlace)} ${podiumTone(visualPlace)}`}
                   >
-                    <div className={visualPlace === 1 ? "" : "pt-2"}>{podiumSymbol(visualPlace)}</div>
+                    <div className={visualPlace === 1 ? "" : "pt-2"}>
+                      {podiumSymbol(visualPlace)}
+                    </div>
                   </div>
                 </div>
               </div>

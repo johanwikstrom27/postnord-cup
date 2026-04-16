@@ -274,6 +274,10 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
 
     for (const unit of allScoringUnits(config)) {
       const round = unit.round;
+      if (!round.locked) {
+        roundPoints[unit.resultKey] = 0;
+        continue;
+      }
       const results = config.results[unit.resultKey] ?? [];
       let points = 0;
 

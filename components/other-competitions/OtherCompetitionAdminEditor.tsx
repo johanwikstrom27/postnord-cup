@@ -1082,7 +1082,7 @@ export default function OtherCompetitionAdminEditor({
       const nextRound = rounds.find((round) => round.id === roundId);
       const results = { ...prev.results };
 
-      if (nextRound && usesTeamPoolForMatchRound(nextRound, prev.teams.length)) {
+      if (nextRound && usesAnyTeamMatchMode(nextRound)) {
         const nextConfig = { ...prev, rounds, results };
         for (const unit of scoringUnitsForRound(nextRound)) {
           results[unit.resultKey] = deriveMatchResultsForResultKey(nextConfig, nextRound, unit.resultKey);
@@ -1095,6 +1095,39 @@ export default function OtherCompetitionAdminEditor({
         results,
       };
     });
+  }
+
+  function clearEnteredResults() {
+    if (locked) return;
+    if (!window.confirm("Vill du nollställa all inmatad resultatdata för den här tävlingen?")) return;
+    if (!window.confirm("Detta rensar alla resultat, matchutfall och tabellpoäng men behåller rundor, bollar och schema. Är du helt säker?")) return;
+
+    patchConfig((prev) => ({
+      ...prev,
+      rounds: prev.rounds.map((round) => ({
+        ...round,
+        schedule: round.schedule.map((item) => ({
+          ...item,
+          pairings: (item.pairings ?? []).map((pairing) => ({
+            ...pairing,
+            resultLabel: "",
+            winnerId: null,
+            halved: false,
+            matchPoints: null,
+            holesRemaining: null,
+          })),
+          matchWinnerCompetitorId: null,
+          matchHalved: false,
+          matchPoints: null,
+          holesRemaining: null,
+          matchResultLabel: "",
+          unitMatchResults: {},
+        })),
+      })),
+      results: Object.fromEntries(
+        prev.rounds.flatMap((round) => scoringUnitsForRound(round).map((unit) => [unit.resultKey, [] as OtherCompetitionResult[]]))
+      ),
+    }));
   }
 
   function removeRound(roundId: string) {
@@ -1707,6 +1740,9 @@ export default function OtherCompetitionAdminEditor({
             )}
             <button type="button" onClick={() => void saveNow()} disabled={locked} className={buttonClass()}>
               Spara nu
+            </button>
+            <button type="button" onClick={clearEnteredResults} disabled={locked} className={buttonClass("danger")}>
+              Nollställ resultat
             </button>
           </div>
         </div>

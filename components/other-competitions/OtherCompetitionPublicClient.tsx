@@ -17,6 +17,7 @@ import { defaultResultDisplayForFormat, formatLabel } from "@/lib/otherCompetiti
 import {
   type Competitor,
   competitorsForRound,
+  derivedTeamMatchResultForUnit,
   roundLeaderboard,
   scoringModelForUnit,
   scoringUnitsForRound,
@@ -340,6 +341,92 @@ function pairingDisplayLabel(
 
 function scheduleItemLabel(index: number) {
   return `Boll ${index + 1}`;
+}
+
+function totalPointsForUnitResult(
+  result: OtherCompetitionResult | undefined,
+  unit: ReturnType<typeof scoringUnitsForRound>[number]
+) {
+  if (!result) return 0;
+  const raw = Number(result.points || 0) + Number(result.adjustment || 0) + Number(result.bonus || 0);
+  const max = scoringModelForUnit(unit).maxPoints;
+  if (typeof max === "number" && Number.isFinite(max)) return Math.min(raw, max);
+  return raw;
+}
+
+function shortUnitLabel(unit: ReturnType<typeof scoringUnitsForRound>[number], index: number, unitCount: number) {
+  const label = unit.part?.name ?? unit.label;
+  if (/1\s*-\s*9|första 9|front/i.test(label)) return "F9";
+  if (/10\s*-\s*18|bakre 9|back/i.test(label)) return "B9";
+  if (unitCount === 2) return index === 0 ? "F9" : "B9";
+  return `Del ${index + 1}`;
+}
+
+function splitRoundPointsSummary(
+  config: OtherCompetitionConfig,
+  round: OtherCompetitionRound,
+  competitor: Competitor
+) {
+  const units = scoringUnitsForRound(round);
+  if (units.length < 2) return null;
+
+  const parts = units.map((unit, index) => {
+    const directResult = (config.results[unit.resultKey] ?? []).find((row) => row.competitorId === competitor.id);
+    const fallbackResult =
+      competitor.type === "team" && round.playMode === "team"
+        ? derivedTeamMatchResultForUnit(config, unit, competitor.id) ?? undefined
+        : undefined;
+    const total = totalPointsForUnitResult(directResult ?? fallbackResult, unit);
+    return `${shortUnitLabel(unit, index, units.length)} ${fmtTablePoints(total)}`;
+  });
+
+  return parts.join(" · ");
+}
+
+function teamPlayerScoreSummary(
+  config: OtherCompetitionConfig,
+  round: OtherCompetitionRound,
+  competitor: Competitor,
+  result?: OtherCompetitionResult
+) {
+  if (competitor.type !== "team" || !result?.playerScores) return null;
+  const units = scoringUnitsForRound(round);
+  if (units.length !== 1) return null;
+  const model = scoringModelForUnit(units[0]);
+  if (model.kind !== "placement" || (model.placementMetric ?? "points") !== "points") return null;
+
+  const team = config.teams.find((entry) => entry.id === competitor.id);
+  if (!team) return null;
+
+  const orderedScores = team.memberIds
+    .map((playerId) => result.playerScores?.[playerId])
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+
+  if (orderedScores.length < 2) return null;
+
+  const total =
+    typeof result.rawScore === "number" && Number.isFinite(result.rawScore)
+      ? result.rawScore
+      : orderedScores.reduce((sum, value) => sum + value, 0);
+
+  return `${orderedScores.map((value) => fmtPoints(value)).join(" + ")} = ${fmtPoints(total)}p`;
+}
+
+function teamStrokeScoreSummary(
+  round: OtherCompetitionRound,
+  competitor: Competitor,
+  result?: OtherCompetitionResult
+) {
+  if (competitor.type !== "team" || !result) return null;
+  const units = scoringUnitsForRound(round);
+  if (units.length !== 1) return null;
+  const unit = units[0];
+  const model = scoringModelForUnit(unit);
+  const format = unit.part?.format ?? round.format;
+  if (format !== "scramble") return null;
+  if (model.kind !== "placement" || (model.placementMetric ?? "points") !== "strokes") return null;
+  if (typeof result.rawScore !== "number" || !Number.isFinite(result.rawScore)) return null;
+  return `${fmtPoints(result.rawScore)} slag`;
 }
 
 function unitForSegment(round: OtherCompetitionRound, units: ReturnType<typeof scoringUnitsForRound>, segment: OtherCompetitionSchedulePairing["segment"]) {
@@ -925,19 +1012,32 @@ export default function OtherCompetitionPublicClient({
                             <div className="mt-4 border-t border-white/10 pt-4">
                               <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Resultat</div>
                               <div className="grid gap-2">
-                                {rows.slice(0, 6).map((row) => (
-                                  <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                                    <div className="min-w-0">
-                                      <span className="font-medium">{row.competitor.name}</span>
-                                      {row.competitor.type === "player" && row.competitor.teamName ? (
-                                        <span className="ml-2 inline-flex align-middle">
-                                          <TeamBadge competitor={row.competitor} />
-                                        </span>
-                                      ) : null}
+                                {rows.slice(0, 6).map((row) => {
+                                  const splitPointsSummary = splitRoundPointsSummary(competition.config, round, row.competitor);
+                                  const playerScoreSummary = teamPlayerScoreSummary(competition.config, round, row.competitor, row.result);
+                                  const strokeScoreSummary = teamStrokeScoreSummary(round, row.competitor, row.result);
+                                  return (
+                                    <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                      <div className="min-w-0">
+                                        <span className="font-medium">{row.competitor.name}</span>
+                                        {row.competitor.type === "player" && row.competitor.teamName ? (
+                                          <span className="ml-2 inline-flex align-middle">
+                                            <TeamBadge competitor={row.competitor} />
+                                          </span>
+                                        ) : null}
+                                        {strokeScoreSummary ? (
+                                          <span className="ml-2 text-sm text-white/55">{strokeScoreSummary}</span>
+                                        ) : null}
+                                        {splitPointsSummary ? (
+                                          <div className="mt-1 truncate text-xs text-white/45">{splitPointsSummary}</div>
+                                        ) : playerScoreSummary ? (
+                                          <div className="mt-1 truncate text-xs text-white/45">{playerScoreSummary}</div>
+                                        ) : null}
+                                      </div>
+                                      <div className="font-semibold tabular-nums">{fmtTablePoints(row.points)}</div>
                                     </div>
-                                    <div className="font-semibold tabular-nums">{fmtTablePoints(row.points)}</div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             </div>
                           ) : null}

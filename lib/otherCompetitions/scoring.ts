@@ -195,7 +195,7 @@ function resultTotalForUnit(result: OtherCompetitionResult | undefined, unit: Sc
   return raw;
 }
 
-function derivedTeamMatchResultForUnit(
+export function derivedTeamMatchResultForUnit(
   config: OtherCompetitionConfig,
   unit: ScoringUnit,
   competitorId: string

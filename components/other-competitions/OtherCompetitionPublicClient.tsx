@@ -358,9 +358,9 @@ function totalPointsForUnitResult(
 
 function splitUnitLabel(unit: ReturnType<typeof scoringUnitsForRound>[number], index: number, unitCount: number) {
   const label = unit.part?.name ?? unit.label;
-  if (/1\s*-\s*9|första 9|front/i.test(label)) return "Främre nio:";
-  if (/10\s*-\s*18|bakre 9|back/i.test(label)) return "Bakre nio:";
-  if (unitCount === 2) return index === 0 ? "Främre nio:" : "Bakre nio:";
+  if (/1\s*-\s*9|första 9|front/i.test(label)) return "Hål 1-9:";
+  if (/10\s*-\s*18|bakre 9|back/i.test(label)) return "Hål 10-18:";
+  if (unitCount === 2) return index === 0 ? "Hål 1-9:" : "Hål 10-18:";
   return `${label}:`;
 }
 

@@ -89,7 +89,7 @@ export function buildCompetitionRulesDraft(config: OtherCompetitionConfig) {
     "RESULTAT OCH VISNING",
     "- Resultatlistan visar lagets eller spelarens tabellpoäng för rundan.",
     "- Vid poängbogey visas även spelarnas summering, till exempel 36 + 42 = 78p.",
-    "- Vid uppdelade rundor visas även delpoäng, till exempel Främre nio: 2p · Bakre nio: 3p.",
+    "- Vid uppdelade rundor visas även delpoäng, till exempel Hål 1-9: 2p · Hål 10-18: 3p.",
     "- Totalställningen summerar bara låsta rundor.",
   ];
 

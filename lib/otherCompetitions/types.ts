@@ -53,6 +53,10 @@ export type OtherCompetitionSchedulePairing = {
   segment: "front_9" | "back_9";
   playerIds: string[];
   resultLabel: string;
+  winnerId?: string | null;
+  halved?: boolean;
+  matchPoints?: number | null;
+  holesRemaining?: number | null;
 };
 
 export type OtherCompetitionScheduleItem = {

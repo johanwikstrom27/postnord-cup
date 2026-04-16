@@ -87,6 +87,10 @@ function normalizeSchedulePairing(value: unknown, index: number): OtherCompetiti
     segment: input.segment === "back_9" ? "back_9" : "front_9",
     playerIds: Array.isArray(input.playerIds) ? input.playerIds.map(String).filter(Boolean).slice(0, 2) : [],
     resultLabel: typeof input.resultLabel === "string" ? input.resultLabel : "",
+    winnerId: typeof input.winnerId === "string" ? input.winnerId : null,
+    halved: Boolean(input.halved),
+    matchPoints: typeof input.matchPoints === "number" && Number.isFinite(input.matchPoints) ? input.matchPoints : null,
+    holesRemaining: typeof input.holesRemaining === "number" && Number.isFinite(input.holesRemaining) ? input.holesRemaining : null,
   };
 }
 

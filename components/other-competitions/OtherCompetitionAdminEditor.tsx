@@ -110,6 +110,26 @@ function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
 }
 
+function matchMarginLabel(pairing: Pick<OtherCompetitionSchedulePairing, "matchPoints" | "holesRemaining">) {
+  const matchPoints = Number(pairing.matchPoints ?? 0);
+  const holesRemaining = Number(pairing.holesRemaining ?? 0);
+  if (!Number.isFinite(matchPoints) || matchPoints <= 0) return "";
+  if (!Number.isFinite(holesRemaining) || holesRemaining <= 0) return `${matchPoints}up`;
+  return `${matchPoints}&${holesRemaining}`;
+}
+
+function buildPairingResultLabel(
+  pairing: Pick<OtherCompetitionSchedulePairing, "winnerId" | "halved" | "matchPoints" | "holesRemaining">,
+  playerNamesById: Map<string, string>
+) {
+  if (pairing.halved) return "Delad match";
+  if (!pairing.winnerId) return "";
+  const winnerName = playerNamesById.get(pairing.winnerId);
+  if (!winnerName) return "";
+  const margin = matchMarginLabel(pairing);
+  return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
+}
+
 function usesPlayerBallScores(format: OtherCompetitionRound["format"]) {
   return ["stableford", "stroke_play", "eclectic"].includes(format);
 }
@@ -632,6 +652,131 @@ export default function OtherCompetitionAdminEditor({
       .filter((player): player is OtherCompetitionPlayer => Boolean(player));
   }
 
+  function normalizePairingResult(pairing: OtherCompetitionSchedulePairing) {
+    const playerNamesById = new Map(config.players.map((player) => [player.id, player.name]));
+    const playerIds = pairing.playerIds.map(String).filter(Boolean).slice(0, 2);
+    const winnerId = playerIds.includes(pairing.winnerId ?? "") ? pairing.winnerId ?? null : null;
+    const halved = playerIds.length === 2 ? Boolean(pairing.halved) && !winnerId : false;
+    const matchPoints =
+      typeof pairing.matchPoints === "number" && Number.isFinite(pairing.matchPoints) && pairing.matchPoints > 0
+        ? pairing.matchPoints
+        : null;
+    const holesRemaining =
+      typeof pairing.holesRemaining === "number" && Number.isFinite(pairing.holesRemaining) && pairing.holesRemaining >= 0
+        ? pairing.holesRemaining
+        : null;
+    const autoLabel = buildPairingResultLabel({ winnerId, halved, matchPoints, holesRemaining }, playerNamesById);
+
+    return {
+      ...pairing,
+      playerIds,
+      winnerId,
+      halved,
+      matchPoints,
+      holesRemaining,
+      resultLabel: autoLabel || (!winnerId && !halved ? pairing.resultLabel : ""),
+    };
+  }
+
+  function normalizeScheduleItemPairings(item: OtherCompetitionScheduleItem) {
+    return {
+      ...item,
+      pairings: (item.pairings ?? []).map(normalizePairingResult),
+    };
+  }
+
+  function matchSegmentsForResultKey(round: OtherCompetitionRound, resultKey: string) {
+    if (round.format !== "switch_match_9") return new Set<OtherCompetitionSchedulePairing["segment"]>(["front_9"]);
+    const units = scoringUnitsForRound(round);
+    if (units.length <= 1) return new Set<OtherCompetitionSchedulePairing["segment"]>(["front_9", "back_9"]);
+    const unitIndex = units.findIndex((unit) => unit.resultKey === resultKey);
+    return new Set<OtherCompetitionSchedulePairing["segment"]>([unitIndex <= 0 ? "front_9" : "back_9"]);
+  }
+
+  function pairingsForResultKey(round: OtherCompetitionRound, resultKey: string) {
+    const segments = matchSegmentsForResultKey(round, resultKey);
+    return round.schedule.flatMap((item, itemIndex) =>
+      (item.pairings ?? [])
+        .filter((pairing) => segments.has(pairing.segment))
+        .map((pairing) => ({ item, itemIndex, pairing: normalizePairingResult(pairing) }))
+    );
+  }
+
+  function deriveMatchResultsForResultKey(nextConfig: OtherCompetitionConfig, round: OtherCompetitionRound, resultKey: string) {
+    if (!usesTeamPoolForMatchRound(round, nextConfig.teams.length)) return nextConfig.results[resultKey] ?? [];
+
+    const unit = scoringUnitsForRound(round).find((item) => item.resultKey === resultKey);
+    if (!unit) return nextConfig.results[resultKey] ?? [];
+
+    const model = scoringModelForUnit(unit);
+    const playerNamesById = new Map(nextConfig.players.map((player) => [player.id, player.name]));
+    const segments = matchSegmentsForResultKey(round, resultKey);
+    const existing = new Map((nextConfig.results[resultKey] ?? []).map((result) => [result.competitorId, result]));
+    const results = competitorsForRound(nextConfig, round).map((competitor) => ({
+      ...createResult(competitor.id),
+      ...existing.get(competitor.id),
+      competitorId: competitor.id,
+      scoreLabel: "",
+      rawScore: null,
+      playerScores: {},
+      points: 0,
+      winnerOverride: false,
+    }));
+    const resultsByCompetitorId = new Map(results.map((result) => [result.competitorId, result]));
+    const labelsByCompetitorId = new Map<string, string[]>();
+    const addLabel = (competitorId: string, label: string) => {
+      if (!label) return;
+      labelsByCompetitorId.set(competitorId, [...(labelsByCompetitorId.get(competitorId) ?? []), label]);
+    };
+
+    for (const item of round.schedule) {
+      for (const rawPairing of item.pairings ?? []) {
+        const pairing = normalizePairingResult(rawPairing);
+        if (!segments.has(pairing.segment)) continue;
+
+        const [playerAId, playerBId] = pairing.playerIds;
+        if (!playerAId || !playerBId) continue;
+
+        const playerAResult = resultsByCompetitorId.get(playerAId);
+        const playerBResult = resultsByCompetitorId.get(playerBId);
+        if (!playerAResult || !playerBResult) continue;
+
+        const playerAName = firstName(playerNamesById.get(playerAId) ?? playerAId);
+        const playerBName = firstName(playerNamesById.get(playerBId) ?? playerBId);
+        const margin = matchMarginLabel(pairing);
+
+        if (pairing.halved) {
+          playerAResult.points += model.drawPoints;
+          playerBResult.points += model.drawPoints;
+          addLabel(playerAId, `delad mot ${playerBName}`);
+          addLabel(playerBId, `delad mot ${playerAName}`);
+          continue;
+        }
+
+        if (pairing.winnerId !== playerAId && pairing.winnerId !== playerBId) continue;
+
+        const winnerId = pairing.winnerId;
+        const loserId = winnerId === playerAId ? playerBId : playerAId;
+        const winnerResult = resultsByCompetitorId.get(winnerId);
+        const loserResult = resultsByCompetitorId.get(loserId);
+        if (!winnerResult || !loserResult) continue;
+
+        winnerResult.points += model.winPoints;
+        loserResult.points += model.lossPoints;
+
+        const winnerName = winnerId === playerAId ? playerAName : playerBName;
+        const loserName = loserId === playerAId ? playerAName : playerBName;
+        addLabel(winnerId, `v mot ${loserName}${margin ? ` ${margin}` : ""}`);
+        addLabel(loserId, `f mot ${winnerName}${margin ? ` ${margin}` : ""}`);
+      }
+    }
+
+    return results.map((result) => ({
+      ...result,
+      scoreLabel: (labelsByCompetitorId.get(result.competitorId) ?? []).join(", "),
+    }));
+  }
+
   function movePlayerToTeam(playerId: string, targetTeamId: string) {
     if (locked) return;
     patchConfig((prev) => ({
@@ -675,10 +820,32 @@ export default function OtherCompetitionAdminEditor({
   }
 
   function patchRound(roundId: string, patch: Partial<OtherCompetitionRound>) {
-    patchConfig((prev) => ({
-      ...prev,
-      rounds: prev.rounds.map((round) => (round.id === roundId ? { ...round, ...patch } : round)),
-    }));
+    patchConfig((prev) => {
+      const rounds = prev.rounds.map((round) => {
+        if (round.id !== roundId) return round;
+        const nextRound = {
+          ...round,
+          ...patch,
+          schedule: Array.isArray(patch.schedule) ? patch.schedule.map(normalizeScheduleItemPairings) : round.schedule,
+        };
+        return nextRound;
+      });
+      const nextRound = rounds.find((round) => round.id === roundId);
+      const results = { ...prev.results };
+
+      if (nextRound && usesTeamPoolForMatchRound(nextRound, prev.teams.length)) {
+        const nextConfig = { ...prev, rounds, results };
+        for (const unit of scoringUnitsForRound(nextRound)) {
+          results[unit.resultKey] = deriveMatchResultsForResultKey(nextConfig, nextRound, unit.resultKey);
+        }
+      }
+
+      return {
+        ...prev,
+        rounds,
+        results,
+      };
+    });
   }
 
   function removeRound(roundId: string) {
@@ -913,17 +1080,17 @@ export default function OtherCompetitionAdminEditor({
         const [a1, a2] = teamA.memberIds;
         const [b1, b2] = teamB.memberIds;
         if (a1 && b1) {
-          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a1, b1], resultLabel: "" });
+          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a1, b1], resultLabel: "", winnerId: null, halved: false, matchPoints: null, holesRemaining: null });
         }
         if (a2 && b2) {
-          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a2, b2], resultLabel: "" });
+          pairings.push({ id: crypto.randomUUID(), segment: "front_9", playerIds: [a2, b2], resultLabel: "", winnerId: null, halved: false, matchPoints: null, holesRemaining: null });
         }
         if (includeBackNine) {
           if (a1 && b2) {
-            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a1, b2], resultLabel: "" });
+            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a1, b2], resultLabel: "", winnerId: null, halved: false, matchPoints: null, holesRemaining: null });
           }
           if (a2 && b1) {
-            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a2, b1], resultLabel: "" });
+            pairings.push({ id: crypto.randomUUID(), segment: "back_9", playerIds: [a2, b1], resultLabel: "", winnerId: null, halved: false, matchPoints: null, holesRemaining: null });
           }
         }
       }
@@ -938,6 +1105,10 @@ export default function OtherCompetitionAdminEditor({
         segment: "front_9",
         playerIds: group.slice(0, 2),
         resultLabel: "",
+        winnerId: null,
+        halved: false,
+        matchPoints: null,
+        holesRemaining: null,
       });
       if (group.length >= 4) {
         pairings.push({
@@ -945,6 +1116,10 @@ export default function OtherCompetitionAdminEditor({
           segment: "front_9",
           playerIds: group.slice(2, 4),
           resultLabel: "",
+          winnerId: null,
+          halved: false,
+          matchPoints: null,
+          holesRemaining: null,
         });
         if (includeBackNine) {
           pairings.push({
@@ -952,12 +1127,20 @@ export default function OtherCompetitionAdminEditor({
             segment: "back_9",
             playerIds: [group[0], group[2]],
             resultLabel: "",
+            winnerId: null,
+            halved: false,
+            matchPoints: null,
+            holesRemaining: null,
           });
           pairings.push({
             id: crypto.randomUUID(),
             segment: "back_9",
             playerIds: [group[1], group[3]],
             resultLabel: "",
+            winnerId: null,
+            halved: false,
+            matchPoints: null,
+            holesRemaining: null,
           });
         }
       }
@@ -1006,6 +1189,10 @@ export default function OtherCompetitionAdminEditor({
           segment,
           playerIds: item.competitorIds.slice(0, 2),
           resultLabel: "",
+          winnerId: null,
+          halved: false,
+          matchPoints: null,
+          holesRemaining: null,
         },
       ],
     });
@@ -1018,7 +1205,9 @@ export default function OtherCompetitionAdminEditor({
     patch: Partial<OtherCompetitionSchedulePairing>
   ) {
     patchScheduleItem(round, item.id, {
-      pairings: (item.pairings ?? []).map((pairing) => (pairing.id === pairingId ? { ...pairing, ...patch } : pairing)),
+      pairings: (item.pairings ?? []).map((pairing) =>
+        pairing.id === pairingId ? normalizePairingResult({ ...pairing, ...patch }) : pairing
+      ),
     });
   }
 
@@ -1857,7 +2046,7 @@ export default function OtherCompetitionAdminEditor({
                                 </button>
                               </div>
                               {(item.pairings ?? []).filter((pairing) => pairing.segment === segment).map((pairing) => (
-                                <div key={pairing.id} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 md:grid-cols-[1fr_1fr_minmax(0,1fr)_auto]">
+                                <div key={pairing.id} className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 md:grid-cols-[1fr_1fr_auto]">
                                   {[0, 1].map((playerIndex) => (
                                     <select
                                       key={playerIndex}
@@ -1866,7 +2055,14 @@ export default function OtherCompetitionAdminEditor({
                                       onChange={(e) => {
                                         const playerIds = pairing.playerIds.slice();
                                         playerIds[playerIndex] = e.target.value;
-                                        patchSchedulePairing(round, item, pairing.id, { playerIds });
+                                        patchSchedulePairing(round, item, pairing.id, {
+                                          playerIds,
+                                          winnerId: null,
+                                          halved: false,
+                                          matchPoints: null,
+                                          holesRemaining: null,
+                                          resultLabel: "",
+                                        });
                                       }}
                                       className={inputClass(roundLocked)}
                                     >
@@ -1881,13 +2077,6 @@ export default function OtherCompetitionAdminEditor({
                                       })}
                                     </select>
                                   ))}
-                                  <input
-                                    disabled={roundLocked}
-                                    value={pairing.resultLabel}
-                                    onChange={(e) => patchSchedulePairing(round, item, pairing.id, { resultLabel: e.target.value })}
-                                    placeholder="Resultat, t.ex. Simon 2&1"
-                                    className={inputClass(roundLocked)}
-                                  />
                                   <button type="button" disabled={roundLocked} onClick={() => removeSchedulePairing(round, item, pairing.id)} className={buttonClass("danger")}>
                                     Ta bort
                                   </button>
@@ -1969,7 +2158,9 @@ export default function OtherCompetitionAdminEditor({
                 </div>
               ) : null}
               <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
-                {selectedScoringUnit.round.playMode === "team"
+                {usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)
+                  ? "Matchresultat matas in här per singelmatch. Välj vinnare, segermarginal och hål kvar så uppdateras schemat och tabellpoängen räknas automatiskt."
+                  : selectedScoringUnit.round.playMode === "team"
                   ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
                 Uppdelade 9-hålsdelar matas in var för sig.
@@ -1978,6 +2169,129 @@ export default function OtherCompetitionAdminEditor({
                 {(() => {
                   const unitResults = ensureUnitResults(selectedScoringUnit);
                   const playoffIds = firstPlaceTieIds(selectedScoringUnit, unitResults);
+                  if (usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)) {
+                    const matchRows = pairingsForResultKey(selectedScoringUnit.round, selectedScoringUnit.resultKey);
+                    const model = scoringModelForUnit(selectedScoringUnit);
+
+                    return matchRows.length > 0 ? (
+                      matchRows.map(({ item, itemIndex, pairing }) => {
+                        const playerA = config.players.find((player) => player.id === pairing.playerIds[0]) ?? null;
+                        const playerB = config.players.find((player) => player.id === pairing.playerIds[1]) ?? null;
+                        const matchupLabel =
+                          playerA && playerB ? `${firstName(playerA.name)} vs ${firstName(playerB.name)}` : "Välj spelare i spelschemat";
+
+                        return (
+                          <div key={pairing.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <div className="text-xs uppercase tracking-[0.16em] text-white/42">
+                                  Boll {itemIndex + 1}
+                                  {selectedScoringUnit.round.format === "switch_match_9" ? ` · ${segmentLabel(pairing.segment)}` : ""}
+                                </div>
+                                <div className="mt-1 font-semibold">{matchupLabel}</div>
+                              </div>
+                              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                                {item.time || "--"}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px]">
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Vinnare</span>
+                                <select
+                                  disabled={selectedRoundLocked}
+                                  value={pairing.halved ? "draw" : pairing.winnerId ?? ""}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (!value) {
+                                      patchSchedulePairing(selectedScoringUnit.round, item, pairing.id, {
+                                        winnerId: null,
+                                        halved: false,
+                                        matchPoints: null,
+                                        holesRemaining: null,
+                                        resultLabel: "",
+                                      });
+                                      return;
+                                    }
+                                    if (value === "draw") {
+                                      patchSchedulePairing(selectedScoringUnit.round, item, pairing.id, {
+                                        winnerId: null,
+                                        halved: true,
+                                        matchPoints: null,
+                                        holesRemaining: null,
+                                      });
+                                      return;
+                                    }
+                                    patchSchedulePairing(selectedScoringUnit.round, item, pairing.id, {
+                                      winnerId: value,
+                                      halved: false,
+                                      matchPoints: pairing.matchPoints ?? 1,
+                                      holesRemaining: pairing.holesRemaining ?? 0,
+                                    });
+                                  }}
+                                  className={inputClass(selectedRoundLocked)}
+                                >
+                                  <option value="">Ej spelad</option>
+                                  {playerA ? <option value={playerA.id}>{firstName(playerA.name)}</option> : null}
+                                  {playerB ? <option value={playerB.id}>{firstName(playerB.name)}</option> : null}
+                                  <option value="draw">Delad</option>
+                                </select>
+                              </label>
+
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Poäng i matchen</span>
+                                <input
+                                  disabled={selectedRoundLocked || pairing.halved || !pairing.winnerId}
+                                  type="number"
+                                  min={1}
+                                  value={pairing.matchPoints ?? ""}
+                                  onChange={(e) =>
+                                    patchSchedulePairing(selectedScoringUnit.round, item, pairing.id, {
+                                      matchPoints: e.target.value === "" ? null : Number(e.target.value),
+                                    })
+                                  }
+                                  placeholder="2"
+                                  className={inputClass(selectedRoundLocked || pairing.halved || !pairing.winnerId)}
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">Hål kvar</span>
+                                <input
+                                  disabled={selectedRoundLocked || pairing.halved || !pairing.winnerId}
+                                  type="number"
+                                  min={0}
+                                  value={pairing.holesRemaining ?? ""}
+                                  onChange={(e) =>
+                                    patchSchedulePairing(selectedScoringUnit.round, item, pairing.id, {
+                                      holesRemaining: e.target.value === "" ? null : Number(e.target.value),
+                                    })
+                                  }
+                                  placeholder="1"
+                                  className={inputClass(selectedRoundLocked || pairing.halved || !pairing.winnerId)}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
+                                <span className="text-white/45">Visas i schemat:</span>{" "}
+                                <span className="font-semibold text-white">{pairing.resultLabel || "Inget resultat än"}</span>
+                              </div>
+                              <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
+                                Tabellpoäng: vinst {fmtPoints(model.winPoints)}p · delad {fmtPoints(model.drawPoints)}p · förlust {fmtPoints(model.lossPoints)}p
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/52">
+                        Inga matcher att rapportera ännu. Lägg först upp bollar och parningar i spelschemat.
+                      </div>
+                    );
+                  }
+
                   return competitorsForRound(config, selectedScoringUnit.round).map((competitor) => {
                   const result = unitResults.find((row) => row.competitorId === competitor.id) ?? createResult(competitor.id);
                   const model = scoringModelForUnit(selectedScoringUnit);

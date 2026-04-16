@@ -198,6 +198,25 @@ function itemStructuredMatchLabels(round: OtherCompetitionRound, item: { matchRe
   return item.matchResultLabel ? [{ id: `${round.id}:fallback`, prefix: "", text: item.matchResultLabel }] : [];
 }
 
+function combinedItemLabels(
+  config: OtherCompetitionConfig,
+  round: OtherCompetitionRound,
+  item: { competitorIds: string[]; matchResultLabel?: string; unitMatchResults?: Record<string, { matchResultLabel?: string }> },
+  units: ReturnType<typeof scoringUnitsForRound>
+) {
+  const scoreLabels = itemScoreComparedLabels(config, round, item, units);
+  const matchLabels = itemStructuredMatchLabels(round, item, units);
+  const byId = new Map<string, { id: string; prefix: string; text: string }>();
+
+  for (const label of [...matchLabels, ...scoreLabels]) {
+    byId.set(label.id, label);
+  }
+
+  return units
+    .map((unit) => byId.get(unit.resultKey))
+    .filter((label): label is { id: string; prefix: string; text: string } => Boolean(label));
+}
+
 function placeLabel(index: number) {
   if (index === 0) return "1:a";
   if (index === 1) return "2:a";
@@ -244,14 +263,26 @@ function ScoringPointsTable({ model }: { model: OtherCompetitionScoringModel }) 
   return <div className="rounded-2xl border border-sky-200/15 px-3 py-3 text-sm text-white/72">{scoringSummary(model)}</div>;
 }
 
+function detailedFormatLabel(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel, customName?: string) {
+  const base = formatLabel(format, customName);
+  if (format === "greensome" && model.kind === "match") return `${base} matchspel`;
+  if (format === "best_ball") {
+    if (model.kind === "match" && resolvedResultDisplay(format, model) === "points") return `${base} slagspel`;
+    if (model.kind === "match") return `${base} matchspel`;
+  }
+  if (model.kind === "placement" && model.placementMetric === "strokes") return `${base} slagspel`;
+  if (model.kind === "placement" && model.placementMetric === "points") return `${base} poängbogey`;
+  return base;
+}
+
 function partFormatLabel(part: NonNullable<OtherCompetitionRound["parts"]>[number], round: OtherCompetitionRound) {
-  return formatLabel(part.format ?? round.format, part.customFormatName);
+  return detailedFormatLabel(part.format ?? round.format, part.scoringModel, part.customFormatName);
 }
 
 function roundFormatSummary(round: OtherCompetitionRound) {
   const parts = (round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
   if (parts.length > 0) return parts.map((part) => partFormatLabel(part, round)).join(" + ");
-  return formatLabel(round.format, round.customFormatName);
+  return detailedFormatLabel(round.format, round.scoringModel, round.customFormatName);
 }
 
 function roundHolesSummary(round: OtherCompetitionRound) {
@@ -809,7 +840,7 @@ export default function OtherCompetitionPublicClient({
                             <h2 className="truncate text-xl font-semibold">{round.name}</h2>
                             <div className="mt-1 text-sm text-white/58">
                               {roundFormatSummary(round)} · {roundHolesSummary(round)} ·{" "}
-                              {round.playMode === "team" ? "Lag" : "Individuellt"}
+                              {round.playMode === "team" ? "Individuellt spel, lagets poäng slås ihop" : "Individuellt"}
                             </div>
                           </div>
                           <div className="shrink-0 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-right">
@@ -830,33 +861,7 @@ export default function OtherCompetitionPublicClient({
 
                       {selected ? (
                         <div className="border-t border-white/10 p-4">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                              <div className="text-xs uppercase tracking-[0.18em] text-white/42">Format</div>
-                              <div className="mt-2 font-semibold">{roundFormatSummary(round)}</div>
-                              <div className="mt-1 text-sm text-white/58">
-                                {round.playMode === "team" ? "Lagspel" : "Individuellt"} · {roundHolesSummary(round)}
-                              </div>
-                            </div>
-                            <div className="rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
-                              <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Poäng på spel</div>
-                              <div className="mt-3 grid gap-3">
-                                {units.map((unit) => (
-                                  <div key={unit.resultKey} className="grid gap-2">
-                                    <div className="flex items-center justify-between gap-3 text-sm">
-                                      <span className="font-medium text-white/82">{unit.part ? unit.label : "Hela rundan"}</span>
-                                      <span className="text-right text-white/58">
-                                        {unit.part ? partFormatLabel(unit.part, round) : scoringSummary(scoringModelForUnit(unit))}
-                                      </span>
-                                    </div>
-                                    <ScoringPointsTable model={scoringModelForUnit(unit)} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 grid gap-2">
+                          <div className="grid gap-2">
                             {round.schedule.map((item, itemIndex) => (
                               <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                 <div className="flex items-start justify-between gap-3">
@@ -864,12 +869,12 @@ export default function OtherCompetitionPublicClient({
                                     <div className="font-semibold">
                                       {scheduleItemLabel(itemIndex)}
                                     </div>
-                                    {!usesTeamPoolForMatchRound(round, competition.config.teams.length) ? (
-                                      <div className="mt-2 flex flex-wrap gap-2">
+                                    <div className="mt-2 overflow-x-auto pb-1">
+                                      <div className="flex min-w-max items-center gap-2">
                                         {item.competitorIds.map((id) => {
                                           const competitor = competitors.get(id);
                                           return competitor ? (
-                                            <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/78">
+                                            <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm whitespace-nowrap text-white/78">
                                               {competitor.name}
                                               {competitor.type === "player" && competitor.teamName ? (
                                                 <span className="ml-2 inline-flex align-middle">
@@ -878,64 +883,18 @@ export default function OtherCompetitionPublicClient({
                                               ) : null}
                                             </span>
                                           ) : (
-                                            <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/58">
+                                            <span key={id} className="rounded-2xl border border-white/10 bg-white/5 px-2.5 py-1 text-sm whitespace-nowrap text-white/58">
                                               {id}
                                             </span>
                                           );
                                         })}
                                       </div>
-                                    ) : null}
-                                    {!usesTeamPoolForMatchRound(round, competition.config.teams.length) ? (
-                                      <>
-                                        {itemScoreComparedLabels(competition.config, round, item, units).map((label) => (
-                                          <div key={label.id} className="mt-2 text-sm font-medium text-sky-100/88">
-                                            {label.prefix ? `${label.prefix}: ` : ""}
-                                            {label.text}
-                                          </div>
-                                        ))}
-                                        {itemScoreComparedLabels(competition.config, round, item, units).length === 0
-                                          ? itemStructuredMatchLabels(round, item, units).map((label) => (
-                                              <div key={label.id} className="mt-2 text-sm font-medium text-sky-100/88">
-                                                {label.prefix ? `${label.prefix}: ` : ""}
-                                                {label.text}
-                                              </div>
-                                            ))
-                                          : null}
-                                      </>
-                                    ) : null}
+                                    </div>
                                   </div>
                                   <div className="shrink-0 text-sm font-semibold tabular-nums text-white/82">
                                     {item.time || "--"}
                                   </div>
                                 </div>
-                                {usesTeamPoolForMatchRound(round, competition.config.teams.length) && (item.pairings ?? []).length > 0 ? (
-                                  <div className="mt-3 grid gap-3 border-t border-white/10 pt-3">
-                                    {matchPairingSegments(round).map((segment) => {
-                                      const pairings = (item.pairings ?? []).filter((pairing) => pairing.segment === segment);
-                                      if (pairings.length === 0) return null;
-                                      const segmentUnit = unitForSegment(round, units, segment);
-                                      const teamPoints = teamPointsForItemSegment(competition.config, round, item, segmentUnit);
-                                      const hasSegmentResult = pairings.some((pairing) => pairing.halved || pairing.winnerId);
-                                      return (
-                                        <div key={segment} className="grid gap-2">
-                                          <div className="text-xs uppercase tracking-[0.16em] text-white/42">
-                                            {matchSegmentHeading(round, segment)}
-                                          </div>
-                                          {pairings.map((pairing) => (
-                                            <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/82">
-                                              <div className="font-medium text-sky-100/88">{pairingDisplayLabel(pairing, players)}</div>
-                                            </div>
-                                          ))}
-                                          {hasSegmentResult && teamPoints.length >= 2 ? (
-                                            <div className="px-1 text-xs text-white/58">
-                                              Lagpoäng: {teamPoints.map((entry) => `${entry.label} ${fmtTablePoints(entry.points)}`).join(" · ")}
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
                                 {item.note ? <div className="mt-2 text-sm text-white/55">{item.note}</div> : null}
                               </div>
                             ))}
@@ -946,22 +905,18 @@ export default function OtherCompetitionPublicClient({
                             ) : null}
                           </div>
 
-                          {rows.some((row) => row.points !== 0 || row.result?.scoreLabel) ? (
+                          {round.locked && rows.length > 0 ? (
                             <div className="mt-4 border-t border-white/10 pt-4">
                               <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Resultat</div>
                               <div className="grid gap-2">
                                 {rows.slice(0, 6).map((row) => (
                                   <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
                                     <div className="min-w-0">
-                                      <span className="mr-2 text-white/50">{row.placement ?? "-"}</span>
                                       <span className="font-medium">{row.competitor.name}</span>
                                       {row.competitor.type === "player" && row.competitor.teamName ? (
                                         <span className="ml-2 inline-flex align-middle">
                                           <TeamBadge competitor={row.competitor} />
                                         </span>
-                                      ) : null}
-                                      {row.result?.scoreLabel ? (
-                                        <div className="mt-1 truncate text-xs text-white/45">{row.result.scoreLabel}</div>
                                       ) : null}
                                     </div>
                                     <div className="font-semibold tabular-nums">{fmtTablePoints(row.points)}</div>

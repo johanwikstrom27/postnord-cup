@@ -13,11 +13,13 @@ import type {
   OtherCompetitionTeam,
 } from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
+import { buildCompetitionRulesDraft } from "@/lib/otherCompetitions/rulesDraft";
 import { defaultResultDisplayForFormat, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
   competitorsForRound,
   derivedTeamMatchResultForUnit,
+  rankEntries,
   roundLeaderboard,
   scoringModelForUnit,
   scoringUnitsForRound,
@@ -354,12 +356,12 @@ function totalPointsForUnitResult(
   return raw;
 }
 
-function shortUnitLabel(unit: ReturnType<typeof scoringUnitsForRound>[number], index: number, unitCount: number) {
+function splitUnitLabel(unit: ReturnType<typeof scoringUnitsForRound>[number], index: number, unitCount: number) {
   const label = unit.part?.name ?? unit.label;
-  if (/1\s*-\s*9|första 9|front/i.test(label)) return "F9";
-  if (/10\s*-\s*18|bakre 9|back/i.test(label)) return "B9";
-  if (unitCount === 2) return index === 0 ? "F9" : "B9";
-  return `Del ${index + 1}`;
+  if (/1\s*-\s*9|första 9|front/i.test(label)) return "Främre nio:";
+  if (/10\s*-\s*18|bakre 9|back/i.test(label)) return "Bakre nio:";
+  if (unitCount === 2) return index === 0 ? "Främre nio:" : "Bakre nio:";
+  return `${label}:`;
 }
 
 function splitRoundPointsSummary(
@@ -377,10 +379,70 @@ function splitRoundPointsSummary(
         ? derivedTeamMatchResultForUnit(config, unit, competitor.id) ?? undefined
         : undefined;
     const total = totalPointsForUnitResult(directResult ?? fallbackResult, unit);
-    return `${shortUnitLabel(unit, index, units.length)} ${fmtTablePoints(total)}`;
+    return `${splitUnitLabel(unit, index, units.length)} ${fmtTablePoints(total)}`;
   });
 
   return parts.join(" · ");
+}
+
+function shouldShowTeamResultsForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
+  if (config.teams.length === 0 || round.playMode !== "individual") return false;
+  return scoringUnitsForRound(round).some((unit) => {
+    const format = unit.part?.format ?? round.format;
+    return format === "single_match" || format === "switch_match_9";
+  });
+}
+
+function teamResultRowsForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
+  const units = scoringUnitsForRound(round);
+  const teamEntries = config.teams.map((team) => {
+    const competitor: Competitor = {
+      id: team.id,
+      type: "team",
+      name: teamDisplayName(team, config.players),
+      avatarUrl: config.players.find((player) => player.id === team.memberIds[0])?.avatarUrl ?? null,
+      memberNames: team.memberIds
+        .map((playerId) => config.players.find((player) => player.id === playerId)?.name)
+        .filter((name): name is string => Boolean(name)),
+      teamId: team.id,
+      teamName: teamDisplayName(team, config.players),
+      teamColor: team.color,
+      teamIcon: team.icon ?? null,
+    };
+
+    const pointsByUnit = Object.fromEntries(
+      units.map((unit) => {
+        const points = team.memberIds.reduce((sum, playerId) => {
+          const result = (config.results[unit.resultKey] ?? []).find((row) => row.competitorId === playerId);
+          return sum + totalPointsForUnitResult(result, unit);
+        }, 0);
+        return [unit.resultKey, points];
+      })
+    );
+
+    const total = units.reduce((sum, unit) => sum + (pointsByUnit[unit.resultKey] ?? 0), 0);
+    const detail =
+      units.length > 1
+        ? units
+            .map((unit, index) => `${splitUnitLabel(unit, index, units.length)} ${fmtTablePoints(pointsByUnit[unit.resultKey] ?? 0)}`)
+            .join(" · ")
+        : null;
+
+    return {
+      competitor,
+      points: total,
+      placement: null,
+      overridden: false,
+      winnerOverride: false,
+      result: undefined,
+      detail,
+    };
+  });
+
+  return rankEntries(teamEntries).map((entry) => ({
+    ...entry,
+    detail: teamEntries.find((teamEntry) => teamEntry.competitor.id === entry.competitor.id)?.detail ?? null,
+  }));
 }
 
 function teamPlayerScoreSummary(
@@ -766,6 +828,10 @@ export default function OtherCompetitionPublicClient({
   }, [competition.slug]);
 
   const standings = useMemo(() => totalStandings(competition.config), [competition.config]);
+  const rulesContent = useMemo(
+    () => (competition.rules_content?.trim() ? competition.rules_content : buildCompetitionRulesDraft(competition.config)),
+    [competition.config, competition.rules_content]
+  );
   const nextCountdown = competition.status !== "locked" ? daysUntil(competition.starts_on) : null;
   const showCountdown = nextCountdown != null && nextCountdown > 0;
   const rounds = competition.config.rounds.slice().sort((a, b) => a.sortOrder - b.sortOrder);
@@ -906,8 +972,10 @@ export default function OtherCompetitionPublicClient({
                   const firstStart = earliestStartTime(round);
                   const selected = selectedScheduleRoundId === round.id;
                   const rows = roundLeaderboard(competition.config, round);
+                  const resultRows = shouldShowTeamResultsForRound(competition.config, round)
+                    ? teamResultRowsForRound(competition.config, round)
+                    : rows;
                   const competitors = new Map(scheduleCompetitorsForRound(competition.config, round).map((item) => [item.id, item]));
-                  const players = new Map(competitorsForRound(competition.config, round).map((item) => [item.id, item]));
 
                   return (
                     <div
@@ -1008,14 +1076,15 @@ export default function OtherCompetitionPublicClient({
                             ) : null}
                           </div>
 
-                          {round.locked && rows.length > 0 ? (
+                          {round.locked && resultRows.length > 0 ? (
                             <div className="mt-4 border-t border-white/10 pt-4">
                               <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Resultat</div>
                               <div className="grid gap-2">
-                                {rows.slice(0, 6).map((row) => {
+                                {resultRows.slice(0, 6).map((row) => {
                                   const splitPointsSummary = splitRoundPointsSummary(competition.config, round, row.competitor);
                                   const playerScoreSummary = teamPlayerScoreSummary(competition.config, round, row.competitor, row.result);
                                   const strokeScoreSummary = teamStrokeScoreSummary(round, row.competitor, row.result);
+                                  const inlineSplitSummary = "detail" in row && typeof row.detail === "string" ? row.detail : null;
                                   return (
                                     <div key={row.competitor.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
                                       <div className="min-w-0">
@@ -1028,7 +1097,9 @@ export default function OtherCompetitionPublicClient({
                                         {strokeScoreSummary ? (
                                           <span className="ml-2 text-sm text-white/55">{strokeScoreSummary}</span>
                                         ) : null}
-                                        {splitPointsSummary ? (
+                                        {inlineSplitSummary ? (
+                                          <div className="mt-1 truncate text-xs text-white/45">{inlineSplitSummary}</div>
+                                        ) : splitPointsSummary ? (
                                           <div className="mt-1 truncate text-xs text-white/45">{splitPointsSummary}</div>
                                         ) : playerScoreSummary ? (
                                           <div className="mt-1 truncate text-xs text-white/45">{playerScoreSummary}</div>
@@ -1136,7 +1207,7 @@ export default function OtherCompetitionPublicClient({
       {activeTab === "rules" ? (
         <section className="rounded-[22px] border border-white/10 bg-white/[0.04] p-5">
           <div className="prose prose-invert max-w-none whitespace-pre-wrap text-sm leading-7 text-white/76">
-            {competition.rules_content || "Inga stadgar är publicerade ännu."}
+            {rulesContent}
           </div>
         </section>
       ) : null}

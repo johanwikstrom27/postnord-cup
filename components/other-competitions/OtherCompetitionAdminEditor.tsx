@@ -17,6 +17,7 @@ import type {
 } from "@/lib/otherCompetitions/types";
 import { normalizeConfig, normalizeSlug, statusLabel } from "@/lib/otherCompetitions/data";
 import { FORMAT_OPTIONS, createRound, defaultPlacementMetricForFormat, defaultResultDisplayForFormat, defaultScoringModel, formatLabel } from "@/lib/otherCompetitions/templates";
+import { buildCompetitionRulesDraft } from "@/lib/otherCompetitions/rulesDraft";
 import {
   type Competitor,
   allScoringUnits,
@@ -562,6 +563,7 @@ export default function OtherCompetitionAdminEditor({
   const locked = competition.status === "locked";
 
   const rounds = useMemo(() => sortedRounds(config.rounds), [config.rounds]);
+  const generatedRulesDraft = useMemo(() => buildCompetitionRulesDraft(config), [config]);
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) ?? rounds[0] ?? null;
   const scoringUnits = useMemo(() => allScoringUnits(config), [config]);
   const selectedScoringUnit =
@@ -3049,9 +3051,12 @@ export default function OtherCompetitionAdminEditor({
 
       {tab === "rules" ? (
         <section className="rounded-[26px] border border-white/10 bg-white/[0.04] p-4 md:p-5">
+          <div className="mb-3 text-sm text-white/55">
+            Ett första förslag visas automatiskt tills du skriver egen text. Du kan redigera allt fritt.
+          </div>
           <textarea
             disabled={locked}
-            value={competition.rules_content}
+            value={competition.rules_content.trim() ? competition.rules_content : generatedRulesDraft}
             onChange={(e) => patchCompetition({ rules_content: e.target.value })}
             className={`${inputClass(locked)} min-h-[420px]`}
             placeholder="Regler, poängsystem, rundupplägg och specialregler."

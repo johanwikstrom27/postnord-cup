@@ -839,8 +839,7 @@ export default function OtherCompetitionPublicClient({
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold">{round.name}</h2>
                             <div className="mt-1 text-sm text-white/58">
-                              {roundFormatSummary(round)} · {roundHolesSummary(round)} ·{" "}
-                              {round.playMode === "team" ? "Individuellt spel, lagets poäng slås ihop" : "Individuellt"}
+                              {roundFormatSummary(round)} · {roundHolesSummary(round)}
                             </div>
                           </div>
                           <div className="shrink-0 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-right">

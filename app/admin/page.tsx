@@ -166,12 +166,6 @@ export default async function AdminHome({
           >
             Hantera tävlingar →
           </Link>
-          <Link
-            href="/admin/other-competitions"
-            className="inline-flex items-center justify-center rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm font-medium text-sky-100 transition hover:bg-sky-400/15"
-          >
-            Andra tävlingar →
-          </Link>
         </div>
 
         <div className="grid gap-3">

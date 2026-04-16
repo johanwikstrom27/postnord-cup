@@ -41,9 +41,18 @@ function statusClass(status: string) {
   return "border-white/15 bg-black/35 text-white/85";
 }
 
-function Avatar({ src, name }: { src: string | null; name: string }) {
+function Avatar({ src, name, glowColor }: { src: string | null; name: string; glowColor?: string | null }) {
   return (
-    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/5">
+    <div
+      className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-white/10 bg-white/5"
+      style={
+        glowColor
+          ? {
+              boxShadow: `0 0 0 2px ${glowColor}55, 0 0 18px ${glowColor}55`,
+            }
+          : undefined
+      }
+    >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={name} className="h-full w-full object-cover" />
@@ -56,9 +65,18 @@ function Avatar({ src, name }: { src: string | null; name: string }) {
   );
 }
 
-function MiniAvatar({ src, name }: { src: string | null; name: string }) {
+function MiniAvatar({ src, name, glowColor }: { src: string | null; name: string; glowColor?: string | null }) {
   return (
-    <div className="h-7 w-7 shrink-0 overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5">
+    <div
+      className="h-7 w-7 shrink-0 overflow-hidden rounded-full border-2 border-[#070b14] bg-white/5"
+      style={
+        glowColor
+          ? {
+              boxShadow: `0 0 0 1px ${glowColor}66, 0 0 14px ${glowColor}66`,
+            }
+          : undefined
+      }
+    >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={name} className="h-full w-full object-cover" />
@@ -156,12 +174,22 @@ function roundFormatSummary(round: OtherCompetitionRound) {
   return formatLabel(round.format, round.customFormatName);
 }
 
+function roundHolesSummary(round: OtherCompetitionRound) {
+  const parts = (round.parts ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  if (parts.length >= 2) return `${parts.map((part) => part.holes).join("+")} hål`;
+  return `${round.holes} hål`;
+}
+
 function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
   return teamCount > 0 && (round.format === "single_match" || round.format === "switch_match_9");
 }
 
 function segmentLabel(segment: OtherCompetitionSchedulePairing["segment"]) {
   return segment === "front_9" ? "Första 9" : "Bakre 9";
+}
+
+function scheduleItemLabel(index: number) {
+  return `Boll ${index + 1}`;
 }
 
 function teamMembers(config: OtherCompetitionConfig, teamId: string) {
@@ -496,7 +524,7 @@ export default function OtherCompetitionPublicClient({
               {statusLabel(competition.status)}
             </span>
             {showCountdown ? (
-              <span className="rounded-full border border-amber-300/30 bg-amber-300/15 px-3 py-1 text-xs text-amber-100">
+              <span className="rounded-full border border-orange-200/80 bg-orange-500/80 px-3 py-1 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(249,115,22,0.35)] backdrop-blur-sm">
                 {nextCountdown} dagar kvar
               </span>
             ) : null}
@@ -541,7 +569,7 @@ export default function OtherCompetitionPublicClient({
               className="grid grid-cols-[34px_minmax(190px,1fr)_repeat(var(--rounds),50px)_66px] items-center rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] uppercase tracking-[0.12em] text-white/42"
               style={{ "--rounds": rounds.length } as CSSProperties}
             >
-              <div>Pl</div>
+              <div>#</div>
               <div>Lag</div>
               {rounds.map((round) => (
                 <div key={round.id} className="text-right">
@@ -561,22 +589,21 @@ export default function OtherCompetitionPublicClient({
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex shrink-0 -space-x-2">
                       {playersForCompetitor(competition.config, row.competitor).slice(0, 2).map((player) => (
-                        <MiniAvatar key={player.id} src={player.avatarUrl} name={player.name} />
+                        <MiniAvatar
+                          key={player.id}
+                          src={player.avatarUrl}
+                          name={player.name}
+                          glowColor={row.competitor.teamColor}
+                        />
                       ))}
                       {playersForCompetitor(competition.config, row.competitor).length === 0 ? (
-                        <Avatar src={row.competitor.avatarUrl} name={row.competitor.name} />
+                        <Avatar
+                          src={row.competitor.avatarUrl}
+                          name={row.competitor.name}
+                          glowColor={row.competitor.teamColor}
+                        />
                       ) : null}
                     </div>
-                    {row.competitor.type === "team" && row.competitor.teamColor ? (
-                      <span
-                        className="h-3 w-3 shrink-0 rounded-full border"
-                        style={{
-                          backgroundColor: row.competitor.teamColor,
-                          borderColor: `${row.competitor.teamColor}88`,
-                        }}
-                        aria-hidden
-                      />
-                    ) : null}
                     <div className="min-w-0 truncate text-sm font-semibold">{row.competitor.name}</div>
                   </div>
                   {rounds.map((round) => (
@@ -625,7 +652,7 @@ export default function OtherCompetitionPublicClient({
                           <div className="min-w-0">
                             <h2 className="truncate text-xl font-semibold">{round.name}</h2>
                             <div className="mt-1 text-sm text-white/58">
-                              {roundFormatSummary(round)} · {round.holes} hål ·{" "}
+                              {roundFormatSummary(round)} · {roundHolesSummary(round)} ·{" "}
                               {round.playMode === "team" ? "Lag" : "Individuellt"}
                             </div>
                           </div>
@@ -652,7 +679,7 @@ export default function OtherCompetitionPublicClient({
                               <div className="text-xs uppercase tracking-[0.18em] text-white/42">Format</div>
                               <div className="mt-2 font-semibold">{roundFormatSummary(round)}</div>
                               <div className="mt-1 text-sm text-white/58">
-                                {round.playMode === "team" ? "Lagspel" : "Individuellt"} · {round.holes} hål
+                                {round.playMode === "team" ? "Lagspel" : "Individuellt"} · {roundHolesSummary(round)}
                               </div>
                             </div>
                             <div className="rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
@@ -679,9 +706,7 @@ export default function OtherCompetitionPublicClient({
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="font-semibold">
-                                      {usesTeamPoolForMatchRound(round, competition.config.teams.length)
-                                        ? `Boll ${itemIndex + 1}`
-                                        : item.title || "Boll/match"}
+                                      {scheduleItemLabel(itemIndex)}
                                     </div>
                                     {!usesTeamPoolForMatchRound(round, competition.config.teams.length) ? (
                                       <div className="mt-2 flex flex-wrap gap-2">
@@ -717,7 +742,11 @@ export default function OtherCompetitionPublicClient({
                                       return (
                                         <div key={segment} className="grid gap-2">
                                           <div className="text-xs uppercase tracking-[0.16em] text-white/42">
-                                            {round.format === "switch_match_9" ? segmentLabel(segment) : "Matcher"}
+                                            {round.format === "switch_match_9"
+                                              ? segment === "front_9"
+                                                ? "Matcher hål 1-9"
+                                                : "Matcher hål 10-18"
+                                              : "Matcher"}
                                           </div>
                                           {pairings.map((pairing) => (
                                             <div key={pairing.id} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/82">

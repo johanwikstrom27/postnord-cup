@@ -96,7 +96,7 @@ export default function AdminSeasonBar({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
         <Link
           href={buildHref("/admin", selected)}
           className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
@@ -114,6 +114,12 @@ export default function AdminSeasonBar({
           className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
         >
           Tävlingar
+        </Link>
+        <Link
+          href="/admin/other-competitions"
+          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/85 transition hover:bg-white/10"
+        >
+          Andra tävlingar
         </Link>
         <Link
           href={buildHref("/admin/people", selected)}

@@ -89,7 +89,7 @@ export default async function OtherCompetitionsPage() {
                     {displayStatus.label}
                   </span>
                   {showCountdown ? (
-                    <span className="rounded-full border border-amber-300/30 bg-amber-300/15 px-2.5 py-1 text-xs text-amber-100">
+                    <span className="rounded-full border border-orange-200/80 bg-orange-500/80 px-2.5 py-1 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(249,115,22,0.35)] backdrop-blur-sm">
                       {countdown} dagar kvar
                     </span>
                   ) : null}

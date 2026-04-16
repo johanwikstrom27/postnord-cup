@@ -385,6 +385,34 @@ function splitRoundPointsSummary(
   return parts.join(" · ");
 }
 
+function resultHasContent(result: OtherCompetitionResult | undefined) {
+  if (!result) return false;
+  if (typeof result.rawScore === "number" && Number.isFinite(result.rawScore)) return true;
+  if (result.scoreLabel.trim()) return true;
+  if (result.note.trim()) return true;
+  if (result.adjustment !== 0 || result.bonus !== 0) return true;
+  if (result.winnerOverride || result.placementOverride != null) return true;
+  if (result.points !== 0) return true;
+  return Object.values(result.playerScores ?? {}).some((value) => typeof value === "number" && Number.isFinite(value));
+}
+
+function roundHasDisplayableResults(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
+  if (!round.locked) return false;
+
+  return scoringUnitsForRound(round).some((unit) => {
+    const directResults = config.results[unit.resultKey] ?? [];
+    if (directResults.some(resultHasContent)) return true;
+
+    if (round.playMode === "team") {
+      return competitorsForRound(config, round).some(
+        (competitor) => competitor.type === "team" && Boolean(derivedTeamMatchResultForUnit(config, unit, competitor.id))
+      );
+    }
+
+    return false;
+  });
+}
+
 function shouldShowTeamResultsForRound(config: OtherCompetitionConfig, round: OtherCompetitionRound) {
   if (config.teams.length === 0 || round.playMode !== "individual") return false;
   return scoringUnitsForRound(round).some((unit) => {
@@ -1076,7 +1104,7 @@ export default function OtherCompetitionPublicClient({
                             ) : null}
                           </div>
 
-                          {round.locked && resultRows.length > 0 ? (
+                          {roundHasDisplayableResults(competition.config, round) && resultRows.length > 0 ? (
                             <div className="mt-4 border-t border-white/10 pt-4">
                               <div className="mb-2 text-xs uppercase tracking-[0.18em] text-white/42">Resultat</div>
                               <div className="grid gap-2">

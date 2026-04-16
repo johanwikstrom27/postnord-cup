@@ -15,7 +15,7 @@ import type {
   PostNordPersonSnapshot,
 } from "@/lib/otherCompetitions/types";
 import { normalizeConfig, normalizeSlug, statusLabel } from "@/lib/otherCompetitions/data";
-import { FORMAT_OPTIONS, createRound, defaultPlacementMetricForFormat, defaultScoringModel, formatLabel } from "@/lib/otherCompetitions/templates";
+import { FORMAT_OPTIONS, createRound, defaultPlacementMetricForFormat, defaultResultDisplayForFormat, defaultScoringModel, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
   allScoringUnits,
@@ -107,10 +107,17 @@ function resultScoreLabel(
   format = round.format,
   model: OtherCompetitionScoringModel = round.scoringModel
 ) {
-  if (model.kind === "match") return "Matchresultat";
+  if (model.kind === "match") {
+    if (resolvedResultDisplay(format, model) === "points") return "Poängbogey totalt";
+    return "Matchresultat";
+  }
   if ((model.placementMetric ?? defaultPlacementMetricForFormat(format)) === "strokes") return "Slag totalt";
   if ((model.placementMetric ?? defaultPlacementMetricForFormat(format)) === "points") return "Poängbogey totalt";
   return "Resultat i spelet";
+}
+
+function resolvedResultDisplay(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  return model.resultDisplay ?? defaultResultDisplayForFormat(format);
 }
 
 function firstName(name: string) {
@@ -137,8 +144,32 @@ function buildPairingResultLabel(
   return margin ? `${firstName(winnerName)} ${margin}` : `${firstName(winnerName)} vann`;
 }
 
-function usesStructuredTeamMatchResults(round: OtherCompetitionRound, model: OtherCompetitionScoringModel) {
-  return round.playMode === "team" && model.kind === "match" && matchPairingSegments(round).length === 1 && round.format !== "single_match";
+function usesStructuredTeamMatchResults(
+  round: OtherCompetitionRound,
+  model: OtherCompetitionScoringModel,
+  format: OtherCompetitionRound["format"] = round.format
+) {
+  return (
+    round.playMode === "team" &&
+    model.kind === "match" &&
+    resolvedResultDisplay(format, model) === "match" &&
+    matchPairingSegments(round).length === 1 &&
+    format !== "single_match"
+  );
+}
+
+function usesScoreComparedTeamMatchResults(
+  round: OtherCompetitionRound,
+  model: OtherCompetitionScoringModel,
+  format: OtherCompetitionRound["format"] = round.format
+) {
+  return (
+    round.playMode === "team" &&
+    model.kind === "match" &&
+    format === "best_ball" &&
+    resolvedResultDisplay(format, model) === "points" &&
+    matchPairingSegments(round).length === 1
+  );
 }
 
 function usesAnyTeamMatchMode(round: OtherCompetitionRound) {
@@ -152,7 +183,7 @@ function usesPlayerBallScores(format: OtherCompetitionRound["format"]) {
 function scoringKindOptionsForFormat(format: OtherCompetitionRound["format"]) {
   if (format === "greensome") return ["match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
   if (format === "scramble") return ["placement", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
-  if (format === "best_ball") return ["placement", "match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
+  if (format === "best_ball") return ["match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
   if (format === "single_match" || format === "switch_match_9" || format === "team_match") return ["match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
   return ["placement", "match", "manual", "custom"] as OtherCompetitionScoringModel["kind"][];
 }
@@ -275,13 +306,14 @@ function ScoringModelEditor({
   onChange: (model: OtherCompetitionRound["scoringModel"]) => void;
 }) {
   const kindOptions = scoringKindOptionsForFormat(format);
+  const selectedKind = kindOptions.includes(model.kind) ? model.kind : kindOptions[0];
   return (
     <div className="grid gap-4">
       <label className="space-y-2">
         <span className="text-xs uppercase tracking-[0.18em] text-white/45">Vad ska delas ut?</span>
         <select
           disabled={disabled}
-          value={model.kind}
+          value={selectedKind}
           onChange={(e) => onChange({ ...model, kind: e.target.value as OtherCompetitionRound["scoringModel"]["kind"] })}
           className={inputClass(disabled)}
         >
@@ -318,19 +350,35 @@ function ScoringModelEditor({
       ) : null}
 
       {model.kind === "match" ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="space-y-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-white/45">Vinst</span>
-            <input disabled={disabled} type="number" value={model.winPoints} onChange={(e) => onChange({ ...model, winPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-white/45">Oavgjort</span>
-            <input disabled={disabled} type="number" value={model.drawPoints} onChange={(e) => onChange({ ...model, drawPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
-          </label>
-          <label className="space-y-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-white/45">Förlust</span>
-            <input disabled={disabled} type="number" value={model.lossPoints} onChange={(e) => onChange({ ...model, lossPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
-          </label>
+        <div className="grid gap-3">
+          {format === "best_ball" ? (
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Resultat visas som</span>
+              <select
+                disabled={disabled}
+                value={resolvedResultDisplay(format, model)}
+                onChange={(e) => onChange({ ...model, resultDisplay: e.target.value === "match" ? "match" : "points" })}
+                className={inputClass(disabled)}
+              >
+                <option value="points">Poängbogey</option>
+                <option value="match">Matchspel</option>
+              </select>
+            </label>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Vinst</span>
+              <input disabled={disabled} type="number" value={model.winPoints} onChange={(e) => onChange({ ...model, winPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Oavgjort</span>
+              <input disabled={disabled} type="number" value={model.drawPoints} onChange={(e) => onChange({ ...model, drawPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs uppercase tracking-[0.18em] text-white/45">Förlust</span>
+              <input disabled={disabled} type="number" value={model.lossPoints} onChange={(e) => onChange({ ...model, lossPoints: Number(e.target.value) || 0 })} className={inputClass(disabled)} />
+            </label>
+          </div>
         </div>
       ) : null}
 
@@ -789,7 +837,8 @@ export default function OtherCompetitionAdminEditor({
     if (!unit) return nextConfig.results[resultKey] ?? [];
 
     const model = scoringModelForUnit(unit);
-    if (usesStructuredTeamMatchResults(round, model)) {
+    const format = unitFormat(unit);
+    if (usesStructuredTeamMatchResults(round, model, format)) {
       const competitorNamesById = new Map(competitorsForRound(nextConfig, round).map((competitor) => [competitor.id, competitor.name]));
       const existing = new Map((nextConfig.results[resultKey] ?? []).map((result) => [result.competitorId, result]));
       const results = competitorsForRound(nextConfig, round).map((competitor) => ({
@@ -844,6 +893,10 @@ export default function OtherCompetitionAdminEditor({
         ...result,
         scoreLabel: (labelsByCompetitorId.get(result.competitorId) ?? []).join(", "),
       }));
+    }
+
+    if (usesScoreComparedTeamMatchResults(round, model, format)) {
+      return nextConfig.results[resultKey] ?? [];
     }
 
     if (!usesTeamPoolForMatchRound(round, nextConfig.teams.length)) return nextConfig.results[resultKey] ?? [];
@@ -1178,6 +1231,101 @@ export default function OtherCompetitionAdminEditor({
       };
     });
     patchRoundResults(unit.resultKey, applyPlacementPointsToResults(unit, results));
+  }
+
+  function scoreComparedResultText(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+    if (value == null || !Number.isFinite(value)) return "";
+    const suffix = resolvedResultDisplay(format, model) === "points" ? "p" : "";
+    return `${fmtPoints(value)}${suffix}`;
+  }
+
+  function scoreComparedMatchupLabel(
+    teamALabel: string,
+    teamBLabel: string,
+    teamAScore: number | null,
+    teamBScore: number | null,
+    format: OtherCompetitionRound["format"],
+    model: OtherCompetitionScoringModel
+  ) {
+    const scoreA = scoreComparedResultText(teamAScore, format, model);
+    const scoreB = scoreComparedResultText(teamBScore, format, model);
+    if (!scoreA && !scoreB) return "";
+    if (!scoreA) return `${teamBLabel} ${scoreB}`;
+    if (!scoreB) return `${teamALabel} ${scoreA}`;
+    return `${teamALabel} ${scoreA} - ${teamBLabel} ${scoreB}`;
+  }
+
+  function patchScoreComparedTeamResult(
+    unit: NonNullable<typeof selectedScoringUnit>,
+    item: OtherCompetitionScheduleItem,
+    competitorId: string,
+    value: string
+  ) {
+    if (isRoundLocked(unit.round)) return;
+    const model = scoringModelForUnit(unit);
+    const format = unitFormat(unit);
+    const numericValue = value === "" ? null : Number(value);
+    const nextRawValue = numericValue != null && Number.isFinite(numericValue) ? numericValue : null;
+    const [teamAId, teamBId] = item.competitorIds;
+    const teamNamesById = new Map(competitorsForRound(config, unit.round).map((competitor) => [competitor.id, competitor.name]));
+    const initialResults = ensureUnitResults(unit).map((result) =>
+      result.competitorId === competitorId
+        ? {
+            ...result,
+            rawScore: nextRawValue,
+            scoreLabel: scoreComparedResultText(nextRawValue, format, model),
+            playerScores: {},
+            adjustment: 0,
+            bonus: 0,
+            winnerOverride: false,
+          }
+        : result
+    );
+    const byId = new Map(initialResults.map((result) => [result.competitorId, result]));
+    const teamAResult = byId.get(teamAId);
+    const teamBResult = byId.get(teamBId);
+    const teamAScore = typeof teamAResult?.rawScore === "number" && Number.isFinite(teamAResult.rawScore) ? teamAResult.rawScore : null;
+    const teamBScore = typeof teamBResult?.rawScore === "number" && Number.isFinite(teamBResult.rawScore) ? teamBResult.rawScore : null;
+
+    if (teamAResult) {
+      teamAResult.scoreLabel = scoreComparedResultText(teamAScore, format, model);
+      teamAResult.points =
+        teamAScore == null || teamBScore == null
+          ? 0
+          : teamAScore === teamBScore
+          ? model.drawPoints
+          : teamAScore > teamBScore
+          ? model.winPoints
+          : model.lossPoints;
+    }
+    if (teamBResult) {
+      teamBResult.scoreLabel = scoreComparedResultText(teamBScore, format, model);
+      teamBResult.points =
+        teamAScore == null || teamBScore == null
+          ? 0
+          : teamAScore === teamBScore
+          ? model.drawPoints
+          : teamBScore > teamAScore
+          ? model.winPoints
+          : model.lossPoints;
+    }
+
+    const results = initialResults.map((result) => ({
+      ...result,
+      note:
+        result.competitorId === teamAId || result.competitorId === teamBId
+          ? scoreComparedMatchupLabel(
+              teamNamesById.get(teamAId) ?? teamAId,
+              teamNamesById.get(teamBId) ?? teamBId,
+              teamAScore,
+              teamBScore,
+              format,
+              model
+            )
+          : result.note,
+    }));
+
+    patchRoundResults(unit.resultKey, results);
   }
 
   function firstPlaceTieIds(unit: NonNullable<typeof selectedScoringUnit>, results: OtherCompetitionResult[]) {
@@ -1932,8 +2080,9 @@ export default function OtherCompetitionAdminEditor({
                             format: e.target.value as OtherCompetitionRound["format"],
                             playMode: option?.defaultMode ?? round.playMode,
                             scoringModel: defaultScoringModel(
-                              e.target.value === "greensome" ? "match" : option?.scoringKind ?? round.scoringModel.kind,
-                              defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"])
+                              e.target.value === "greensome" || e.target.value === "best_ball" ? "match" : option?.scoringKind ?? round.scoringModel.kind,
+                              defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"]),
+                              defaultResultDisplayForFormat(e.target.value as OtherCompetitionRound["format"])
                             ),
                           });
                         }}
@@ -2023,8 +2172,9 @@ export default function OtherCompetitionAdminEditor({
                                   patchRoundPart(round, part.id, {
                                     format: e.target.value as OtherCompetitionRound["format"],
                                     scoringModel: defaultScoringModel(
-                                      e.target.value === "greensome" ? "match" : option?.scoringKind ?? part.scoringModel.kind,
-                                      defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"])
+                                      e.target.value === "greensome" || e.target.value === "best_ball" ? "match" : option?.scoringKind ?? part.scoringModel.kind,
+                                      defaultPlacementMetricForFormat(e.target.value as OtherCompetitionRound["format"]),
+                                      defaultResultDisplayForFormat(e.target.value as OtherCompetitionRound["format"])
                                     ),
                                   });
                                 }}
@@ -2330,8 +2480,10 @@ export default function OtherCompetitionAdminEditor({
               <div className="mt-3 rounded-2xl border border-sky-300/15 bg-sky-400/10 px-4 py-3 text-sm text-sky-100/80">
                 {usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)
                   ? "Matchresultat matas in här per singelmatch. Välj vinnare, segermarginal och hål kvar så uppdateras schemat och tabellpoängen räknas automatiskt."
-                  : usesStructuredTeamMatchResults(selectedScoringUnit.round, scoringModelForUnit(selectedScoringUnit))
+                  : usesStructuredTeamMatchResults(selectedScoringUnit.round, scoringModelForUnit(selectedScoringUnit), unitFormat(selectedScoringUnit))
                   ? "Matchresultat matas in här per boll. Välj vinnare, segermarginal och hål kvar så räknas lagens tabellpoäng automatiskt."
+                  : usesScoreComparedTeamMatchResults(selectedScoringUnit.round, scoringModelForUnit(selectedScoringUnit), unitFormat(selectedScoringUnit))
+                  ? "Här matar du in lagens poängbogey för denna 9-hålsdel. Högst resultat får vinstpoängen automatiskt och resultatet visas som poängbogey."
                   : selectedScoringUnit.round.playMode === "team"
                   ? `Denna runda rankar lag. Fyll i spelarnas ${resultScoreLabel(selectedScoringUnit.round, selectedScoringUnit.part?.format, scoringModelForUnit(selectedScoringUnit)).toLowerCase()} så summeras laget och tabellpoängen räknas automatiskt.`
                   : "Denna runda rankar spelare. Spelarnas tabellpoäng summeras ändå till laget i totalställningen när tävlingen har lag."}{" "}
@@ -2342,6 +2494,7 @@ export default function OtherCompetitionAdminEditor({
                   const unitResults = ensureUnitResults(selectedScoringUnit);
                   const playoffIds = firstPlaceTieIds(selectedScoringUnit, unitResults);
                   const selectedUnitModel = scoringModelForUnit(selectedScoringUnit);
+                  const selectedUnitFormat = unitFormat(selectedScoringUnit);
                   if (usesTeamPoolForMatchRound(selectedScoringUnit.round, config.teams.length)) {
                     const matchRows = pairingsForResultKey(selectedScoringUnit.round, selectedScoringUnit.resultKey);
                     const model = selectedUnitModel;
@@ -2465,7 +2618,83 @@ export default function OtherCompetitionAdminEditor({
                     );
                   }
 
-                  if (usesStructuredTeamMatchResults(selectedScoringUnit.round, selectedUnitModel)) {
+                  if (usesScoreComparedTeamMatchResults(selectedScoringUnit.round, selectedUnitModel, selectedUnitFormat)) {
+                    const teamNamesById = new Map(competitorsForRound(config, selectedScoringUnit.round).map((competitor) => [competitor.id, competitor.name]));
+                    const scoreItems = selectedScoringUnit.round.schedule.filter((item) => item.competitorIds.length >= 2);
+
+                    return scoreItems.length > 0 ? (
+                      scoreItems.map((item, itemIndex) => {
+                        const [teamAId, teamBId] = item.competitorIds;
+                        const teamALabel = teamNamesById.get(teamAId) ?? teamAId;
+                        const teamBLabel = teamNamesById.get(teamBId) ?? teamBId;
+                        const teamAResult = unitResults.find((row) => row.competitorId === teamAId) ?? createResult(teamAId);
+                        const teamBResult = unitResults.find((row) => row.competitorId === teamBId) ?? createResult(teamBId);
+                        const matchupLabel = scoreComparedMatchupLabel(
+                          teamALabel,
+                          teamBLabel,
+                          typeof teamAResult.rawScore === "number" && Number.isFinite(teamAResult.rawScore) ? teamAResult.rawScore : null,
+                          typeof teamBResult.rawScore === "number" && Number.isFinite(teamBResult.rawScore) ? teamBResult.rawScore : null,
+                          selectedUnitFormat,
+                          selectedUnitModel
+                        );
+
+                        return (
+                          <div key={item.id} className="rounded-[20px] border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <div className="text-xs uppercase tracking-[0.16em] text-white/42">Boll {itemIndex + 1}</div>
+                                <div className="mt-1 font-semibold">{teamALabel} vs {teamBLabel}</div>
+                              </div>
+                              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                                {item.time || "--"}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">{teamALabel}</span>
+                                <input
+                                  disabled={selectedRoundLocked}
+                                  type="number"
+                                  value={teamAResult.rawScore ?? ""}
+                                  onChange={(e) => patchScoreComparedTeamResult(selectedScoringUnit, item, teamAId, e.target.value)}
+                                  placeholder="34"
+                                  className={inputClass(selectedRoundLocked)}
+                                />
+                              </label>
+                              <label className="space-y-2">
+                                <span className="text-xs uppercase tracking-[0.16em] text-white/42">{teamBLabel}</span>
+                                <input
+                                  disabled={selectedRoundLocked}
+                                  type="number"
+                                  value={teamBResult.rawScore ?? ""}
+                                  onChange={(e) => patchScoreComparedTeamResult(selectedScoringUnit, item, teamBId, e.target.value)}
+                                  placeholder="31"
+                                  className={inputClass(selectedRoundLocked)}
+                                />
+                              </label>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/72">
+                                <span className="text-white/45">Visas som:</span>{" "}
+                                <span className="font-semibold text-white">{matchupLabel || "Inget resultat än"}</span>
+                              </div>
+                              <div className="rounded-2xl border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-50">
+                                Tabellpoäng: vinst {fmtPoints(selectedUnitModel.winPoints)}p · delad {fmtPoints(selectedUnitModel.drawPoints)}p · förlust {fmtPoints(selectedUnitModel.lossPoints)}p
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/52">
+                        Inga matcher att rapportera ännu. Lägg först upp bollar i spelschemat.
+                      </div>
+                    );
+                  }
+
+                  if (usesStructuredTeamMatchResults(selectedScoringUnit.round, selectedUnitModel, selectedUnitFormat)) {
                     const teamNamesById = new Map(competitorsForRound(config, selectedScoringUnit.round).map((competitor) => [competitor.id, competitor.name]));
                     const matchItems = selectedScoringUnit.round.schedule.filter((item) => item.competitorIds.length >= 2);
 

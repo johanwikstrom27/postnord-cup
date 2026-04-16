@@ -40,6 +40,7 @@ export type OtherCompetitionFormat =
 export type OtherCompetitionScoringModel = {
   kind: "placement" | "match" | "manual" | "custom";
   placementMetric?: "points" | "strokes";
+  resultDisplay?: "points" | "match";
   placementPoints: number[];
   winPoints: number;
   drawPoints: number;

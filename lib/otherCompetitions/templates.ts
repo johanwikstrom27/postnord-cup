@@ -11,8 +11,8 @@ export const FORMAT_OPTIONS: Array<{
   scoringKind: OtherCompetitionScoringModel["kind"];
 }> = [
   { value: "stableford", label: "Poängbogey / Stableford", defaultMode: "individual", scoringKind: "placement" },
-  { value: "greensome", label: "Greensome", defaultMode: "team", scoringKind: "placement" },
-  { value: "best_ball", label: "Bästboll", defaultMode: "team", scoringKind: "placement" },
+  { value: "greensome", label: "Greensome", defaultMode: "team", scoringKind: "match" },
+  { value: "best_ball", label: "Bästboll", defaultMode: "team", scoringKind: "match" },
   { value: "scramble", label: "Scramble", defaultMode: "team", scoringKind: "placement" },
   { value: "single_match", label: "Singelmatchspel", defaultMode: "individual", scoringKind: "match" },
   { value: "switch_match_9", label: "Matchspel byte efter 9 hål", defaultMode: "individual", scoringKind: "match" },
@@ -35,13 +35,20 @@ export function defaultPlacementMetricForFormat(format: OtherCompetitionFormat) 
   return "points" as const;
 }
 
+export function defaultResultDisplayForFormat(format: OtherCompetitionFormat) {
+  if (format === "best_ball") return "points" as const;
+  return "match" as const;
+}
+
 export function defaultScoringModel(
   kind: OtherCompetitionScoringModel["kind"] = "placement",
-  placementMetric: "points" | "strokes" = "points"
+  placementMetric: "points" | "strokes" = "points",
+  resultDisplay: "points" | "match" = "match"
 ): OtherCompetitionScoringModel {
   return {
     kind,
     placementMetric,
+    resultDisplay,
     placementPoints: kind === "match" ? [] : [6, 5, 4, 3, 2, 1],
     winPoints: 2,
     drawPoints: 1,
@@ -54,7 +61,7 @@ export function defaultScoringModel(
 
 export function createRound(format: OtherCompetitionFormat, order: number): OtherCompetitionRound {
   const option = FORMAT_OPTIONS.find((item) => item.value === format) ?? FORMAT_OPTIONS[0];
-  const scoringKind = format === "greensome" ? "match" : option.scoringKind;
+  const scoringKind = format === "greensome" || format === "best_ball" ? "match" : option.scoringKind;
 
   return {
     id: crypto.randomUUID(),
@@ -65,7 +72,7 @@ export function createRound(format: OtherCompetitionFormat, order: number): Othe
     holes: 18,
     playMode: option.defaultMode,
     ballsCount: 0,
-    scoringModel: defaultScoringModel(scoringKind, defaultPlacementMetricForFormat(format)),
+    scoringModel: defaultScoringModel(scoringKind, defaultPlacementMetricForFormat(format), defaultResultDisplayForFormat(format)),
     parts: [],
     schedule: [],
     locked: false,

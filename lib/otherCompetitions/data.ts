@@ -58,6 +58,7 @@ function normalizeScoringModel(value: unknown): OtherCompetitionScoringModel {
   return {
     kind: isScoringKind(input.kind) ? input.kind : "placement",
     placementMetric: input.placementMetric === "strokes" ? "strokes" : "points",
+    resultDisplay: input.resultDisplay === "match" ? "match" : input.resultDisplay === "points" ? "points" : undefined,
     placementPoints: Array.isArray(input.placementPoints) ? input.placementPoints.filter((item) => Number.isFinite(item)) : [6, 5, 4, 3, 2, 1],
     winPoints: Number.isFinite(input.winPoints) ? Number(input.winPoints) : 2,
     drawPoints: Number.isFinite(input.drawPoints) ? Number(input.drawPoints) : 1,
@@ -70,13 +71,19 @@ function normalizeScoringModel(value: unknown): OtherCompetitionScoringModel {
 
 function normalizeRoundPart(value: unknown, round: OtherCompetitionRound, index: number): OtherCompetitionRoundPart {
   const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionRoundPart>) : {};
+  const format = isFormat(input.format) ? input.format : round.format;
+  const scoringModel = normalizeScoringModel(input.scoringModel ?? round.scoringModel);
   return {
     id: typeof input.id === "string" && input.id ? input.id : `part-${round.id}-${index}`,
     name: typeof input.name === "string" && input.name ? input.name : `Del ${index + 1}`,
-    format: isFormat(input.format) ? input.format : round.format,
+    format,
     customFormatName: typeof input.customFormatName === "string" ? input.customFormatName : "",
     holes: Number.isFinite(input.holes) ? Number(input.holes) : 9,
-    scoringModel: normalizeScoringModel(input.scoringModel ?? round.scoringModel),
+    scoringModel: {
+      ...scoringModel,
+      kind: (format === "greensome" || format === "best_ball") && scoringModel.kind === "placement" ? "match" : scoringModel.kind,
+      resultDisplay: scoringModel.resultDisplay ?? (format === "best_ball" ? "points" : "match"),
+    },
     sortOrder: Number.isFinite(input.sortOrder) ? Number(input.sortOrder) : index,
   };
 }
@@ -115,6 +122,7 @@ function normalizeScheduleItem(value: unknown, index: number): OtherCompetitionS
 function normalizeRound(value: unknown, index: number): OtherCompetitionRound {
   const input = typeof value === "object" && value !== null ? (value as Partial<OtherCompetitionRound>) : {};
   const format = isFormat(input.format) ? input.format : "stableford";
+  const scoringModel = normalizeScoringModel(input.scoringModel);
   const round: OtherCompetitionRound = {
     id: typeof input.id === "string" && input.id ? input.id : `round-${index}`,
     name: typeof input.name === "string" && input.name ? input.name : `Runda ${index + 1}`,
@@ -124,7 +132,11 @@ function normalizeRound(value: unknown, index: number): OtherCompetitionRound {
     holes: Number.isFinite(input.holes) ? Number(input.holes) : 18,
     playMode: input.playMode === "team" ? "team" : "individual",
     ballsCount: Number.isFinite(input.ballsCount) ? Number(input.ballsCount) : 0,
-    scoringModel: normalizeScoringModel(input.scoringModel),
+    scoringModel: {
+      ...scoringModel,
+      kind: (format === "greensome" || format === "best_ball") && scoringModel.kind === "placement" ? "match" : scoringModel.kind,
+      resultDisplay: scoringModel.resultDisplay ?? (format === "best_ball" ? "points" : "match"),
+    },
     parts: [],
     schedule: Array.isArray(input.schedule) ? input.schedule.map(normalizeScheduleItem) : [],
     locked: Boolean(input.locked),

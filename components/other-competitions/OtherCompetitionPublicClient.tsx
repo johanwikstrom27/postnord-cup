@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import type {
   OtherCompetitionConfig,
   OtherCompetitionPlayer,
+  OtherCompetitionResult,
   OtherCompetitionRound,
   OtherCompetitionRow,
   OtherCompetitionSchedulePairing,
@@ -12,7 +13,7 @@ import type {
   OtherCompetitionTeam,
 } from "@/lib/otherCompetitions/types";
 import { daysUntil, formatDateRange, statusLabel } from "@/lib/otherCompetitions/data";
-import { formatLabel } from "@/lib/otherCompetitions/templates";
+import { defaultResultDisplayForFormat, formatLabel } from "@/lib/otherCompetitions/templates";
 import {
   type Competitor,
   competitorsForRound,
@@ -116,6 +117,62 @@ function scoringSummary(model: OtherCompetitionScoringModel) {
   if (model.kind === "match") return `Match: ${model.winPoints}-${model.drawPoints}-${model.lossPoints}`;
   if (model.kind === "manual") return "Manuell tabellpoäng";
   return "Eget upplägg";
+}
+
+function resolvedResultDisplay(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  return model.resultDisplay ?? defaultResultDisplayForFormat(format);
+}
+
+function usesScoreComparedTeamMatchResults(
+  round: OtherCompetitionRound,
+  format: OtherCompetitionRound["format"],
+  model: OtherCompetitionScoringModel
+) {
+  return round.playMode === "team" && format === "best_ball" && model.kind === "match" && resolvedResultDisplay(format, model) === "points";
+}
+
+function scoreComparedResultText(value: number | null, format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel) {
+  if (value == null || !Number.isFinite(value)) return "";
+  const suffix = resolvedResultDisplay(format, model) === "points" ? "p" : "";
+  return `${fmtPoints(value)}${suffix}`;
+}
+
+function itemScoreComparedLabels(
+  config: OtherCompetitionConfig,
+  round: OtherCompetitionRound,
+  item: { competitorIds: string[] },
+  units: ReturnType<typeof scoringUnitsForRound>
+) {
+  return units
+    .map((unit) => {
+      const format = unit.part?.format ?? round.format;
+      const model = scoringModelForUnit(unit);
+      if (!usesScoreComparedTeamMatchResults(round, format, model)) return null;
+      const [teamAId, teamBId] = item.competitorIds;
+      if (!teamAId || !teamBId) return null;
+      const teamNamesById = new Map(competitorsForRound(config, round).map((competitor) => [competitor.id, competitor.name]));
+      const resultsById = new Map<string, OtherCompetitionResult>((config.results[unit.resultKey] ?? []).map((result) => [result.competitorId, result]));
+      const teamAResult = resultsById.get(teamAId);
+      const teamBResult = resultsById.get(teamBId);
+      const teamAScore = typeof teamAResult?.rawScore === "number" && Number.isFinite(teamAResult.rawScore) ? teamAResult.rawScore : null;
+      const teamBScore = typeof teamBResult?.rawScore === "number" && Number.isFinite(teamBResult.rawScore) ? teamBResult.rawScore : null;
+      const scoreA = scoreComparedResultText(teamAScore, format, model);
+      const scoreB = scoreComparedResultText(teamBScore, format, model);
+      if (!scoreA && !scoreB) return null;
+      const teamALabel = teamNamesById.get(teamAId) ?? teamAId;
+      const teamBLabel = teamNamesById.get(teamBId) ?? teamBId;
+      const text = !scoreA
+        ? `${teamBLabel} ${scoreB}`
+        : !scoreB
+        ? `${teamALabel} ${scoreA}`
+        : `${teamALabel} ${scoreA} - ${teamBLabel} ${scoreB}`;
+      return {
+        id: unit.resultKey,
+        prefix: units.length > 1 ? (unit.part ? unit.label : "Hela rundan") : "",
+        text,
+      };
+    })
+    .filter((item): item is { id: string; prefix: string; text: string } => Boolean(item));
 }
 
 function placeLabel(index: number) {
@@ -742,8 +799,18 @@ export default function OtherCompetitionPublicClient({
                                         })}
                                       </div>
                                     ) : null}
-                                    {!usesTeamPoolForMatchRound(round, competition.config.teams.length) && item.matchResultLabel ? (
-                                      <div className="mt-2 text-sm font-medium text-sky-100/88">{item.matchResultLabel}</div>
+                                    {!usesTeamPoolForMatchRound(round, competition.config.teams.length) ? (
+                                      <>
+                                        {itemScoreComparedLabels(competition.config, round, item, units).map((label) => (
+                                          <div key={label.id} className="mt-2 text-sm font-medium text-sky-100/88">
+                                            {label.prefix ? `${label.prefix}: ` : ""}
+                                            {label.text}
+                                          </div>
+                                        ))}
+                                        {itemScoreComparedLabels(competition.config, round, item, units).length === 0 && item.matchResultLabel ? (
+                                          <div className="mt-2 text-sm font-medium text-sky-100/88">{item.matchResultLabel}</div>
+                                        ) : null}
+                                      </>
                                     ) : null}
                                   </div>
                                   <div className="shrink-0 text-sm font-semibold tabular-nums text-white/82">

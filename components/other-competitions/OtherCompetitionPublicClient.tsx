@@ -861,7 +861,24 @@ export default function OtherCompetitionPublicClient({
 
                       {selected ? (
                         <div className="border-t border-white/10 p-4">
-                          <div className="grid gap-2">
+                          <div className="rounded-2xl border border-sky-300/15 bg-sky-400/10 p-3">
+                            <div className="text-xs uppercase tracking-[0.18em] text-sky-100/70">Poäng på spel</div>
+                            <div className="mt-3 grid gap-3">
+                              {units.map((unit) => (
+                                <div key={unit.resultKey} className="grid gap-2">
+                                  <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="font-medium text-white/82">{unit.part ? unit.label : "Hela rundan"}</span>
+                                    <span className="text-right text-white/58">
+                                      {unit.part ? partFormatLabel(unit.part, round) : scoringSummary(scoringModelForUnit(unit))}
+                                    </span>
+                                  </div>
+                                  <ScoringPointsTable model={scoringModelForUnit(unit)} />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-2">
                             {round.schedule.map((item, itemIndex) => (
                               <div key={item.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                 <div className="flex items-start justify-between gap-3">

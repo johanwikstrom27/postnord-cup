@@ -268,6 +268,7 @@ function ScoringPointsTable({ model }: { model: OtherCompetitionScoringModel }) 
 
 function detailedFormatLabel(format: OtherCompetitionRound["format"], model: OtherCompetitionScoringModel, customName?: string) {
   const base = formatLabel(format, customName);
+  if (format === "stableford" && model.kind === "placement" && model.placementMetric === "points") return "Individuell poängbogey";
   if (format === "greensome" && model.kind === "match") return `${base} matchspel`;
   if (format === "best_ball") {
     if (model.kind === "match" && resolvedResultDisplay(format, model) === "points") return `${base} slagspel`;

@@ -8,6 +8,7 @@ function resolvedResultDisplay(format: OtherCompetitionFormat, model: OtherCompe
 
 function detailedFormatLabel(format: OtherCompetitionFormat, model: OtherCompetitionScoringModel, customName?: string) {
   const base = formatLabel(format, customName);
+  if (format === "stableford" && model.kind === "placement" && model.placementMetric === "points") return "Individuell poängbogey";
   if (format === "greensome" && model.kind === "match") return `${base} matchspel`;
   if (format === "best_ball") {
     if (model.kind === "match" && resolvedResultDisplay(format, model) === "points") return `${base} slagspel`;
@@ -92,6 +93,7 @@ export function buildCompetitionRulesDraft(config: OtherCompetitionConfig) {
     "- Vid poängbogey visas även spelarnas summering, till exempel 36 + 42 = 78p.",
     "- Vid uppdelade rundor visas även delpoäng, till exempel Hål 1-9: 2p · Hål 10-18: 3p.",
     "- I GameBook kan du följa resultaten mer i detalj, hål för hål och per del där det finns stöd för det.",
+    "- Vid oavgjort i totalställningen efter alla rundor används bäst ackumulerad poängbogey på sista rundan som tie-break för förstaplatsen.",
   ];
 
   const roundsSection =

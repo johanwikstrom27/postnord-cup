@@ -411,6 +411,12 @@ function roundHasDisplayableResults(config: OtherCompetitionConfig, round: Other
       );
     }
 
+    if (round.playMode === "individual") {
+      return competitorsForRound(config, round).some(
+        (competitor) => competitor.type === "player" && Boolean(derivedIndividualMatchResultForUnit(config, unit, competitor.id))
+      );
+    }
+
     return false;
   });
 }

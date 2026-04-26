@@ -1124,7 +1124,7 @@ export default function OtherCompetitionAdminEditor({
       const nextRound = rounds.find((round) => round.id === roundId);
       const results = { ...prev.results };
 
-      if (nextRound && usesAnyTeamMatchMode(nextRound)) {
+      if (nextRound && (usesAnyTeamMatchMode(nextRound) || usesTeamPoolForMatchRound(nextRound, prev.teams.length))) {
         const nextConfig = { ...prev, rounds, results };
         for (const unit of scoringUnitsForRound(nextRound)) {
           results[unit.resultKey] = deriveMatchResultsForResultKey(nextConfig, nextRound, unit.resultKey);

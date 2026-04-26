@@ -18,6 +18,7 @@ import { defaultResultDisplayForFormat, formatLabel } from "@/lib/otherCompetiti
 import {
   type Competitor,
   competitorsForRound,
+  derivedIndividualMatchResultForUnit,
   derivedTeamMatchResultForUnit,
   rankEntries,
   roundLeaderboard,
@@ -442,7 +443,10 @@ function teamResultRowsForRound(config: OtherCompetitionConfig, round: OtherComp
     const pointsByUnit = Object.fromEntries(
       units.map((unit) => {
         const points = team.memberIds.reduce((sum, playerId) => {
-          const result = (config.results[unit.resultKey] ?? []).find((row) => row.competitorId === playerId);
+          const result =
+            (config.results[unit.resultKey] ?? []).find((row) => row.competitorId === playerId) ??
+            derivedIndividualMatchResultForUnit(config, unit, playerId) ??
+            undefined;
           return sum + totalPointsForUnitResult(result, unit);
         }, 0);
         return [unit.resultKey, points];

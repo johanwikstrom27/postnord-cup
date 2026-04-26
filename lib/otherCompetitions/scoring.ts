@@ -195,6 +195,96 @@ function resultTotalForUnit(result: OtherCompetitionResult | undefined, unit: Sc
   return raw;
 }
 
+function usesTeamPoolForMatchRound(round: OtherCompetitionRound, teamCount: number) {
+  if (teamCount <= 0) return false;
+  if (round.format === "single_match" || round.format === "switch_match_9") return true;
+  return (round.parts ?? []).some((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
+}
+
+function matchPairingSegments(round: OtherCompetitionRound): Array<"front_9" | "back_9"> {
+  if (round.format === "switch_match_9") return ["front_9", "back_9"];
+  const matchParts = (round.parts ?? []).filter((part) => (part.format ?? round.format) === "single_match" || (part.format ?? round.format) === "switch_match_9");
+  return matchParts.length >= 2 ? ["front_9", "back_9"] : ["front_9"];
+}
+
+function matchSegmentsForUnit(unit: ScoringUnit) {
+  const pairingSegments = matchPairingSegments(unit.round);
+  if (pairingSegments.length <= 1) return new Set<"front_9" | "back_9">(["front_9"]);
+  const units = scoringUnitsForRound(unit.round);
+  if (units.length <= 1) return new Set<"front_9" | "back_9">(pairingSegments);
+  const unitIndex = units.findIndex((item) => item.resultKey === unit.resultKey);
+  return new Set<"front_9" | "back_9">([unitIndex <= 0 ? "front_9" : "back_9"]);
+}
+
+export function derivedIndividualMatchResultForUnit(
+  config: OtherCompetitionConfig,
+  unit: ScoringUnit,
+  competitorId: string
+): OtherCompetitionResult | null {
+  const round = unit.round;
+  const model = scoringModelForUnit(unit);
+  const format = unit.part?.format ?? round.format;
+
+  if (round.playMode !== "individual" || model.kind !== "match") return null;
+  if (!usesTeamPoolForMatchRound(round, config.teams.length)) return null;
+  if (format !== "single_match" && format !== "switch_match_9") return null;
+
+  const playerNamesById = new Map(config.players.map((player) => [player.id, player.name]));
+  const segments = matchSegmentsForUnit(unit);
+  let totalPoints = 0;
+  const labels: string[] = [];
+
+  for (const item of round.schedule) {
+    for (const pairing of item.pairings ?? []) {
+      if (!segments.has(pairing.segment)) continue;
+      const [playerAId, playerBId] = pairing.playerIds;
+      if (!playerAId || !playerBId) continue;
+      if (competitorId !== playerAId && competitorId !== playerBId) continue;
+
+      const opponentId = competitorId === playerAId ? playerBId : playerAId;
+      const opponentName = playerNamesById.get(opponentId)?.trim().split(/\s+/)[0] ?? opponentId;
+      const margin =
+        typeof pairing.matchPoints === "number" && Number.isFinite(pairing.matchPoints) && pairing.matchPoints > 0
+          ? typeof pairing.holesRemaining === "number" && Number.isFinite(pairing.holesRemaining) && pairing.holesRemaining > 0
+            ? `${pairing.matchPoints}&${pairing.holesRemaining}`
+            : `${pairing.matchPoints}up`
+          : "";
+
+      if (pairing.halved) {
+        totalPoints += model.drawPoints;
+        labels.push(`delad mot ${opponentName}`);
+        continue;
+      }
+
+      if (pairing.winnerId === competitorId) {
+        totalPoints += model.winPoints;
+        labels.push(`v mot ${opponentName}${margin ? ` ${margin}` : ""}`);
+        continue;
+      }
+
+      if (pairing.winnerId === opponentId) {
+        totalPoints += model.lossPoints;
+        labels.push(`f mot ${opponentName}${margin ? ` ${margin}` : ""}`);
+      }
+    }
+  }
+
+  if (totalPoints === 0 && labels.length === 0) return null;
+
+  return {
+    competitorId,
+    scoreLabel: labels.join(", "),
+    rawScore: null,
+    playerScores: {},
+    points: totalPoints,
+    adjustment: 0,
+    bonus: 0,
+    placementOverride: null,
+    winnerOverride: false,
+    note: "",
+  };
+}
+
 export function derivedTeamMatchResultForUnit(
   config: OtherCompetitionConfig,
   unit: ScoringUnit,
@@ -331,11 +421,20 @@ export function roundLeaderboard(config: OtherCompetitionConfig, round: OtherCom
   return rankEntries(
     competitors.map((competitor) => {
       const points = resultsByUnit.reduce((sum, row) => {
-        const result = row.results.get(competitor.id) ?? derivedTeamMatchResultForUnit(config, row.unit, competitor.id) ?? undefined;
+        const result =
+          row.results.get(competitor.id) ??
+          (competitor.type === "team"
+            ? derivedTeamMatchResultForUnit(config, row.unit, competitor.id) ?? undefined
+            : derivedIndividualMatchResultForUnit(config, row.unit, competitor.id) ?? undefined);
         return sum + resultTotalForUnit(result, row.unit);
       }, 0);
       const result = resultsByUnit
-        .map((row) => row.results.get(competitor.id) ?? derivedTeamMatchResultForUnit(config, row.unit, competitor.id) ?? undefined)
+        .map((row) =>
+          row.results.get(competitor.id) ??
+          (competitor.type === "team"
+            ? derivedTeamMatchResultForUnit(config, row.unit, competitor.id) ?? undefined
+            : derivedIndividualMatchResultForUnit(config, row.unit, competitor.id) ?? undefined)
+        )
         .find(Boolean);
       return {
         competitor,
@@ -370,7 +469,10 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
         } else {
           const team = config.teams.find((row) => row.id === competitor.id);
           points = (team?.memberIds ?? []).reduce((sum, playerId) => {
-            const result = results.find((row) => row.competitorId === playerId);
+            const result =
+              results.find((row) => row.competitorId === playerId) ??
+              derivedIndividualMatchResultForUnit(config, unit, playerId) ??
+              undefined;
             return sum + resultTotalForUnit(result, unit);
           }, 0);
         }
@@ -378,7 +480,12 @@ export function totalStandings(config: OtherCompetitionConfig): StandingEntry[] 
         const team = teamByPlayerId(config, competitor.id);
         points = resultTotalForUnit(results.find((row) => row.competitorId === team?.id), unit);
       } else {
-        points = resultTotalForUnit(results.find((row) => row.competitorId === competitor.id), unit);
+        points = resultTotalForUnit(
+          results.find((row) => row.competitorId === competitor.id) ??
+            derivedIndividualMatchResultForUnit(config, unit, competitor.id) ??
+            undefined,
+          unit
+        );
       }
 
       roundPoints[unit.resultKey] = points;
